@@ -2,11 +2,9 @@ const { Telegraf } = require("telegraf");
 const fs = require("fs");
 const path = require("path");
 
+// 🎯 التصليح الفولاذي: فصل الاستدعاءات صح عشان الكود ميهنجش ولا يسقط رسايل
 const { handleUpload } = require("./handlers/upload");
-const {
-  handlePublish,
-  publishToGroup
-} = require("./handlers/publish");
+const { handlePublish, publishToGroup } = require("./handlers/publish");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const adminId = process.env.ADMIN_ID;
@@ -26,12 +24,11 @@ function saveGroups(groups) {
   fs.writeFileSync(groupsFile, JSON.stringify(groups, null, 2));
 }
 
-// 🤖 حارس قنص الأهداف المطور: يحفظ الخاص، الجروبات، السوبر جروبات، والقنوات تلقائياً فوراً!
+// 🤖 حارس قنص الأهداف: بيسجل الخاص، الجروبات، والقنوات تلقائياً فوراً!
 bot.on("message", async (ctx, next) => {
   try {
     const chat = ctx.chat;
 
-    // 🎯 الترقية الشاملة: لقط الشات سواء كان private أو group أو channel
     if (
       chat &&
       (chat.type === "private" ||
@@ -43,9 +40,8 @@ bot.on("message", async (ctx, next) => {
       const exists = groups.find((g) => g.id === chat.id);
 
       if (!exists) {
-        // تمييز اسم شات الخاص باسم المستخدم ليكون شكله شيك في الأزرار
         const chatTitle = chat.type === "private" 
-          ? `👤 الخاص الخاص بك (${chat.first_name || 'Admin Chat'})` 
+          ? `👤 الخاص الخاص بك (${chat.first_name || 'Admin'})` 
           : chat.title;
 
         groups.push({
@@ -61,7 +57,8 @@ bot.on("message", async (ctx, next) => {
   } catch (err) {
     console.log("❌ Auto Save Error:", err.message);
   }
-  return next();});
+  return next();
+});
 
 bot.start((ctx) => {
   if (ctx.chat.type !== "private") return;

@@ -5,7 +5,6 @@ const { getQuestions } = require("../../utils/storage");
 
 const groupsFile = path.join(__dirname, "../../../groups.json");
 
-// تحميل الجروبات من ملف JSON
 function loadGroups() {
   if (!fs.existsSync(groupsFile)) {
     return [];
@@ -13,7 +12,6 @@ function loadGroups() {
   return JSON.parse(fs.readFileSync(groupsFile));
 }
 
-// أمر /publish لبناء قائمة الأزرار الشفافة لايف
 async function handlePublish(ctx) {
   try {
     const groups = loadGroups();
@@ -22,7 +20,6 @@ async function handlePublish(ctx) {
       return ctx.reply("❌ لا توجد جروبات محفوظة");
     }
 
-    // 🔘 اختيار الهدف من أزرار شفافة ديناميكية (جروبات، قنوات، أو خاص)
     const buttons = groups.map((group) => {
       return [
         Markup.button.callback(
@@ -43,7 +40,6 @@ async function handlePublish(ctx) {
   }
 }
 
-// تنفيذ عملية الضخ للهدف المحدد بعد الضغط على الزرار الشفاف
 async function publishToGroup(ctx, groupId) {
   try {
     const userId = ctx.from.id;
@@ -64,12 +60,11 @@ async function publishToGroup(ctx, groupId) {
 
     const { lectureName, questions } = quizData;
 
-    // 1️⃣ 🎯 إضافة رسالة: جاري النشر الفورية للأدمن في الخاص
+    // 🎯 1️⃣ رسالة: جاري النشر الفورية للأدمن في الخاص
     await ctx.reply(
       `🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n\n⏳ انتظر حتى اكتمال النشر...`
     );
 
-    // 📚 رسالة بداية الكويز في الهدف المستهدف
     await ctx.telegram.sendMessage(
       target.id,
       `📚 ${lectureName}`
@@ -79,7 +74,6 @@ async function publishToGroup(ctx, groupId) {
 
     for (const q of questions) {
       try {
-        // 🎯 ترقيم الأسئلة تلقائياً Q1, Q2... + 👀 إخفاء المشاركين (is_anonymous: true)
         await ctx.telegram.sendPoll(
           target.id,
           `Q${count + 1}) ${q.question}`,
@@ -93,19 +87,13 @@ async function publishToGroup(ctx, groupId) {
 
         count++;
         console.log(`✅ Sent ${count}/${questions.length} -> ${target.title}`);
-
-        // ⏳ Anti-429 delay: الانتظار التكتيكي (4 ثواني) بين كل سؤال وسؤال
         await new Promise((r) => setTimeout(r, 4000));
 
       } catch (pollError) {
-        console.error(`❌ Error sending poll at index ${count}:`, pollError.message);
-        
-        // 🔥 محرك الـ Auto Retry الذكي لو Telegram عمل Rate Limit (429)
         if (pollError.message.includes('429') || pollError.message.includes('retry after')) {
           const matchSeconds = pollError.message.match(/retry after (\d+)/i);
           const waitTime = matchSeconds ? parseInt(matchSeconds[1]) * 1000 : 9000;
           
-          console.log(`⚠️ [Rate Limit Caught] Sleeping for ${waitTime / 1000} seconds before retrying...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           
           await ctx.telegram.sendPoll(
@@ -120,13 +108,12 @@ async function publishToGroup(ctx, groupId) {
       }
     }
 
-    // 📚 اسم المحاضرة في النهاية جوه هدف النشر
     await ctx.telegram.sendMessage(
       target.id,
       `✅ انتهت أسئلة ${lectureName}`
     );
 
-    // 2️⃣ 🎯 التعديل الفخم: رسالة عند انتهاء النشر مفصلة للأدمن
+    // 🎯 2️⃣ رسالة عند انتهاء النشر مفصلة للأدمن
     return ctx.reply(
       `✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`
     );
