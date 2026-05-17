@@ -23,31 +23,36 @@ function saveGroups(groups) {
   fs.writeFileSync(groupsFile, JSON.stringify(groups, null, 2));
 }
 
-// 📡 حارس قنص وحفظ الجروبات تلقائياً بمجرد إضافة البوت كـ Admin
-bot.on("my_chat_member", async (ctx) => {
+// 🎯 التعديل الذهبي الأضمن: لقط وحفظ الأهداف تلقائياً عند استقبال أي رسالة
+bot.on("message", async (ctx, next) => {
   try {
     const chat = ctx.chat;
 
-    if (!chat || (chat.type !== "group" && chat.type !== "supergroup" && chat.type !== "channel")) {
-      return;
-    }
+    if (
+      chat &&
+      (chat.type === "group" ||
+        chat.type === "supergroup" ||
+        chat.type === "channel")
+    ) {
+      let groups = loadGroups();
+      const exists = groups.find((g) => g.id === chat.id);
 
-    let groups = loadGroups();
-    const exists = groups.find((g) => g.id === chat.id);
+      if (!exists) {
+        groups.push({
+          id: chat.id,
+          title: chat.title,
+          type: chat.type
+        });
 
-    if (!exists) {
-      groups.push({
-        id: chat.id,
-        title: chat.title,
-        type: chat.type
-      });
-
-      saveGroups(groups);
-      console.log(`✅ Saved New Target: ${chat.title}`);
+        saveGroups(groups);
+        console.log(`✅ Saved New Target: ${chat.title}`);
+      }
     }
   } catch (err) {
-    console.log("❌ Auto Save Group Error:", err.message);
+    console.log("❌ Auto Save Error:", err.message);
   }
+
+  return next(); // تمرير الرسالة للأوامر اللاحقة بدون أي تعطيل
 });
 
 bot.start((ctx) => {
@@ -55,13 +60,13 @@ bot.start((ctx) => {
   ctx.reply("🚀 ارفع ملف الأسئلة TXT ثم استخدم /publish");
 });
 
-// حارس استقبال ورفع ملفات الأسئلة
+// رفع واستقبال ملفات الأسئلة الطبية والأكاديمية
 bot.on("document", async (ctx) => {
   if (String(ctx.from.id) !== String(adminId)) return;
   return handleUpload(ctx);
 });
 
-// أمر النشر والضخ الشامل للجروبات المسجلة
+// أمر النشر والضخ الشامل
 bot.command("publish", async (ctx) => {
   if (String(ctx.from.id) !== String(adminId)) {
     return ctx.reply("❌ للأدمن فقط");
