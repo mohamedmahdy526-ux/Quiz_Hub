@@ -5,6 +5,7 @@ const { getQuestions } = require("../../utils/storage");
 
 const groupsFile = path.join(__dirname, "../../../groups.json");
 
+// تحميل الجروبات من ملف JSON
 function loadGroups() {
   if (!fs.existsSync(groupsFile)) {
     return {};
@@ -27,7 +28,7 @@ async function handlePublish(ctx) {
       return ctx.reply("❌ لا توجد أهداف أو جروبات محفوظة");
     }
 
-    // 🎯 التعديل الأسطوري الفخم بتاعك: تمييز الخاص عن العام بالـ Emojis والأسماء النظيفة
+    // إنشاء الأزرار الشفافة: تمييز الخاص عن العام بالـ Emojis والأسماء النظيفة
     const buttons = groupsArray.map((group) => {
       const label = group.type === "private"
         ? `👤 ${group.title} (خاص)`
@@ -68,9 +69,9 @@ async function publishToGroup(ctx, groupId) {
 
     const { lectureName, questions } = quizData;
 
-    // رسالة: جاري النشر الفورية للأدمن في الخاص
+    // 🎯 التعديل الفخم والجديد: إظهار اسم المحاضرة مع عدد الأسئلة الإجمالي للأدمن قبل النشر لايف
     await ctx.reply(
-      `🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n\n⏳ انتظر حتى اكتمال النشر...`
+      `🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n🎯 عدد الأسئلة الإجمالي: ${questions.length}\n\n⏳ انتظر حتى اكتمال النشر تماماً...`
     );
 
     // رسالة بداية الكويز في الهدف المستهدف
@@ -83,6 +84,7 @@ async function publishToGroup(ctx, groupId) {
 
     for (const q of questions) {
       try {
+        // ترقيم الأسئلة تلقائياً Q1, Q2... + إخفاء المشاركين (is_anonymous: true) لحماية الأداء
         await ctx.telegram.sendPoll(
           target.id,
           `Q${count + 1}) ${q.question}`,
@@ -96,6 +98,8 @@ async function publishToGroup(ctx, groupId) {
 
         count++;
         console.log(`✅ Sent ${count}/${questions.length} -> ${target.title}`);
+        
+        // Anti-429 delay: الانتظار التكتيكي (4 ثواني) بين كل سؤال وسؤال
         await new Promise((r) => setTimeout(r, 4000));
 
       } catch (pollError) {
@@ -103,6 +107,7 @@ async function publishToGroup(ctx, groupId) {
           const matchSeconds = pollError.message.match(/retry after (\d+)/i);
           const waitTime = matchSeconds ? parseInt(matchSeconds[1]) * 1000 : 9000;
           
+          console.log(`⚠️ [Rate Limit Caught] Sleeping for ${waitTime / 1000} seconds...`);
           await new Promise(resolve => setTimeout(resolve, waitTime));
           
           await ctx.telegram.sendPoll(
@@ -117,12 +122,13 @@ async function publishToGroup(ctx, groupId) {
       }
     }
 
+    // رسالة نهاية الكويز في الهدف المستهدف
     await ctx.telegram.sendMessage(
       target.id,
       `✅ انتهت أسئلة ${lectureName}`
     );
 
-    // رسالة عند انتهاء النشر مفصلة للأدمن
+    // رسالة عند انتهاء النشر مفصلة للأدمن في الخاص
     return ctx.reply(
       `✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`
     );
