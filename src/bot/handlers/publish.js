@@ -22,28 +22,28 @@ async function handlePublish(ctx) {
       return ctx.reply("❌ لا توجد جروبات محفوظة");
     }
 
-    // إنشاء الأزرار الشفافة ديناميكياً بناءً على الجروبات المسجلة
+    // 🔘 اختيار الهدف من أزرار شفافة ديناميكية (جروبات، قنوات، أو خاص)
     const buttons = groups.map((group) => {
       return [
         Markup.button.callback(
-          `${group.title}`,
+          `${group.title} (${group.type === 'private' ? 'خاص 👤' : 'عام 📢'})`,
           `publish_${group.id}`
         )
       ];
     });
 
     return ctx.reply(
-      "📡 اختر الجروب أو القناة للنشر:",
+      "📡 اختر الجروب، القناة أو الشات الخاص للنشر:",
       Markup.inlineKeyboard(buttons)
     );
 
   } catch (err) {
     console.log("❌ Publish Menu Error:", err.message);
-    return ctx.reply("❌ حدث خطأ");
+    return ctx.reply("❌ حدث خطأ في جلب قائمة الأهداف.");
   }
 }
 
-// تنفيذ عملية الضخ للهدف المحدد بعد الضغط على الزرار
+// تنفيذ عملية الضخ للهدف المحدد بعد الضغط على الزرار الشفاف
 async function publishToGroup(ctx, groupId) {
   try {
     const userId = ctx.from.id;
@@ -59,12 +59,17 @@ async function publishToGroup(ctx, groupId) {
     );
 
     if (!target) {
-      return ctx.reply("❌ الجروب غير موجود");
+      return ctx.reply("❌ الهدف المختار غير موجود في القائمة");
     }
 
     const { lectureName, questions } = quizData;
 
-    // بانر البداية النظيف في الجروب المستهدف
+    // 1️⃣ 🎯 إضافة رسالة: جاري النشر الفورية للأدمن في الخاص
+    await ctx.reply(
+      `🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n\n⏳ انتظر حتى اكتمال النشر...`
+    );
+
+    // 📚 رسالة بداية الكويز في الهدف المستهدف
     await ctx.telegram.sendMessage(
       target.id,
       `📚 ${lectureName}`
@@ -72,9 +77,9 @@ async function publishToGroup(ctx, groupId) {
 
     let count = 0;
 
-    // ضخ بنك الأسئلة بالـ Smart Delay والـ Anonymous Mode لحماية الأداء
     for (const q of questions) {
       try {
+        // 🎯 ترقيم الأسئلة تلقائياً Q1, Q2... + 👀 إخفاء المشاركين (is_anonymous: true)
         await ctx.telegram.sendPoll(
           target.id,
           `Q${count + 1}) ${q.question}`,
@@ -89,25 +94,46 @@ async function publishToGroup(ctx, groupId) {
         count++;
         console.log(`✅ Sent ${count}/${questions.length} -> ${target.title}`);
 
-        // الـ 4 ثواني التكتيكية المعتمدة منك لمنع الـ Rate Limit 🏎️
+        // ⏳ Anti-429 delay: الانتظار التكتيكي (4 ثواني) بين كل سؤال وسؤال
         await new Promise((r) => setTimeout(r, 4000));
 
-      } catch (err) {
-        console.log("❌ Poll Error:", err.message);
+      } catch (pollError) {
+        console.error(`❌ Error sending poll at index ${count}:`, pollError.message);
+        
+        // 🔥 محرك الـ Auto Retry الذكي لو Telegram عمل Rate Limit (429)
+        if (pollError.message.includes('429') || pollError.message.includes('retry after')) {
+          const matchSeconds = pollError.message.match(/retry after (\d+)/i);
+          const waitTime = matchSeconds ? parseInt(matchSeconds[1]) * 1000 : 9000;
+          
+          console.log(`⚠️ [Rate Limit Caught] Sleeping for ${waitTime / 1000} seconds before retrying...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          await ctx.telegram.sendPoll(
+            target.id,
+            `Q${count + 1}) ${q.question}`,
+            q.options,
+            { type: "quiz", correct_option_id: q.correct, is_anonymous: true }
+          );
+          count++;
+          await new Promise(resolve => setTimeout(resolve, 4000));
+        }
       }
     }
 
-    // بانر النهاية الصافي
+    // 📚 اسم المحاضرة في النهاية جوه هدف النشر
     await ctx.telegram.sendMessage(
       target.id,
       `✅ انتهت أسئلة ${lectureName}`
     );
 
-    return ctx.reply("🚀 تم النشر بنجاح");
+    // 2️⃣ 🎯 التعديل الفخم: رسالة عند انتهاء النشر مفصلة للأدمن
+    return ctx.reply(
+      `✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`
+    );
 
   } catch (err) {
     console.log("❌ Publish Error:", err.message);
-    return ctx.reply("❌ حدث خطأ أثناء النشر");
+    return ctx.reply("❌ حدث خطأ غير متوقع أثناء ضخ الكويز.");
   }
 }
 

@@ -2,11 +2,11 @@ const { Telegraf } = require("telegraf");
 const fs = require("fs");
 const path = require("path");
 
+const { handleUpload } = require("./handlers/upload");
 const {
-  handleUpload,
+  handlePublish,
   publishToGroup
-} = require("./handlers/upload"); // تأكيد استدعاء الـ Destructuring الكامل والمطهر
-const { handlePublish, publishToGroup: publishFn } = require("./handlers/publish");
+} = require("./handlers/publish");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const adminId = process.env.ADMIN_ID;
@@ -26,14 +26,16 @@ function saveGroups(groups) {
   fs.writeFileSync(groupsFile, JSON.stringify(groups, null, 2));
 }
 
-// لقط وحفظ الأهداف تلقائياً عند استقبال أي رسالة (صخر ومضمون 100%)
+// 🤖 حارس قنص الأهداف المطور: يحفظ الخاص، الجروبات، السوبر جروبات، والقنوات تلقائياً فوراً!
 bot.on("message", async (ctx, next) => {
   try {
     const chat = ctx.chat;
 
+    // 🎯 الترقية الشاملة: لقط الشات سواء كان private أو group أو channel
     if (
       chat &&
-      (chat.type === "group" ||
+      (chat.type === "private" ||
+        chat.type === "group" ||
         chat.type === "supergroup" ||
         chat.type === "channel")
     ) {
@@ -41,47 +43,51 @@ bot.on("message", async (ctx, next) => {
       const exists = groups.find((g) => g.id === chat.id);
 
       if (!exists) {
+        // تمييز اسم شات الخاص باسم المستخدم ليكون شكله شيك في الأزرار
+        const chatTitle = chat.type === "private" 
+          ? `👤 الخاص الخاص بك (${chat.first_name || 'Admin Chat'})` 
+          : chat.title;
+
         groups.push({
           id: chat.id,
-          title: chat.title,
+          title: chatTitle,
           type: chat.type
         });
 
         saveGroups(groups);
-        console.log(`✅ Saved New Target: ${chat.title}`);
+        console.log(`✅ Saved New Target [${chat.type}]: ${chatTitle}`);
       }
     }
   } catch (err) {
     console.log("❌ Auto Save Error:", err.message);
   }
-  return next();
-});
+  return next();});
 
 bot.start((ctx) => {
   if (ctx.chat.type !== "private") return;
   ctx.reply("🚀 ارفع ملف الأسئلة TXT ثم استخدم /publish");
 });
 
-// رفع واستقبال ملفات الأسئلة 
+// استقبال ورفع ملفات الأسئلة (للأدمن فقط وفي الخاص) 🔐❌
 bot.on("document", async (ctx) => {
-  if (String(ctx.from.id) !== String(adminId)) return;
+  if (ctx.chat.type !== "private") return; 
+  if (String(ctx.from.id) !== String(adminId)) return ctx.reply("❌ عذراً، هذا البوت مخصص للإشراف الأكاديمي فقط!");
   return handleUpload(ctx);
 });
 
-// أمر النشر وبناء قائمة الأزرار
+// أمر النشر (للأدمن فقط وفي الخاص) 🔐❌
 bot.command("publish", async (ctx) => {
-  if (String(ctx.from.id) !== String(adminId)) {
-    return ctx.reply("❌ للأدمن فقط");
-  }
+  if (ctx.chat.type !== "private") return;
+  if (String(ctx.from.id) !== String(adminId)) return ctx.reply("❌ للأدمن فقط");
   return handlePublish(ctx);
 });
 
-// 🎯 التعديل الفولاذي المعتمد منك: التقاط كليكة الزرار وضخ الكويز للجروب المختار فوراً
+// التقاط كليكة الزرار الشفاف وضخ الكويز للهدف المختار
 bot.action(/publish_(.+)/, async (ctx) => {
   try {
     const groupId = ctx.match[1];
-    await ctx.answerCbQuery(); // مسح علامة التحميل الشفافة من الزرار فوراً
-    return publishFn(ctx, groupId);
+    await ctx.answerCbQuery();
+    return publishToGroup(ctx, groupId);
   } catch (err) {
     console.log("❌ Action Error:", err.message);
   }

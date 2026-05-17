@@ -1,6 +1,6 @@
 const { parseQuestions } = require('../../utils/parser');
 const { saveQuestions } = require('../../utils/storage');
-const { cleanText } = require('../../utils/formatter'); // 🎯 استدعاء حارس التطهير التلقائي الجديد
+const { cleanText } = require('../../utils/formatter'); // استدعاء حارس التطهير التلقائي
 
 async function handleUpload(ctx) {
   try {
@@ -14,17 +14,18 @@ async function handleUpload(ctx) {
       .replace(/- Copy(\s*\(\d+\))?/gi, '')
       .trim();
 
-    // جلب الرابط المباشر من سيرفرات تليجرام وقراءته فوراً
+    // جلب الرابط المباشر من سيرفرات تليجرام وقراءته فوراً كـ Text
     const fileLink = await ctx.telegram.getFileLink(fileId);
     const response = await fetch(fileLink.href);
     let textContent = await response.text();
 
-    // 🎯 الترقية الذهبية الكبرى: تطهير وتصليح صيغة الملف تلقائياً قبل الـ Parsing
+    // 🎯 الـ Auto Formatter: تطهير وتصليح صيغة الملف تلقائياً قبل الـ Parsing
     textContent = cleanText(textContent);
 
     // تفكيك واستخراج مصفوفة الأسئلة من النص المغسول
     const questions = parseQuestions(textContent);
 
+    // التحقق الصارم والرد المباشر لو الـ Format مش تمام
     if (!questions.length) {
       return ctx.reply(
         '❌ فشل استخراج الأسئلة.. تأكد من صياغة بنك الأسئلة داخل الملف والـ Format المطلوب.'
@@ -41,7 +42,7 @@ async function handleUpload(ctx) {
       questions
     });
 
-    // رد البوت الرسمي والنظيف بعد رفع الملف مباشرة
+    // رد البوت الرسمي والنظيف وتأكيد استخراج الأسئلة للأدمن
     await ctx.reply(
       `✅**تم استخراج وقفل أسئلة المحاضرة بنجاح!**\n\n` +
       `📚 المحاضرة:\n${lectureTitle}\n\n` +
