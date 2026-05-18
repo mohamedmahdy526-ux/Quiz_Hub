@@ -80,7 +80,6 @@ async function preparePublishMenu(ctx, groupId) {
 
     const { lectureName, questions } = quizData;
 
-    // تفعيل الـ Waiting Mode وحفظ الداتا مؤقتاً
     global.waitingForSubject[userId] = {
       groupId: groupId,
       lectureName: lectureName,
@@ -106,17 +105,15 @@ async function startMassPublishing(ctx, userId, subjectName) {
 
     const { groupId, lectureName, questions } = sessionData;
     
-    // مسح الـ State فوراً لتأمين التكرار وتحرير الذاكرة
     delete global.waitingForSubject[userId];
 
     const groupsObject = loadGroups();
     const target = groupsObject[String(groupId)];
     if (!target) return ctx.reply("❌ الهدف المستهدف لم يعد متاحاً.");
 
-    // رسالة طمأنينة فورية للأدمن في الخاص
     await ctx.reply(`🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n🎯 عدد الأسئلة: ${questions.length}\n⏳ انتظر حتى اكتمال النشر...`, { parse_mode: undefined });
 
-    // تركيب الـ البانر الثابت، الاحترافي والمرتب تلقائياً بناءً على خطتك الأكاديمية الذكية
+    // 🎯 البانر الثابت المنظم المعتمد منك
     const finalIntro = 
       `📚 بداية كويز محاضرة\n` +
       `🩺 المادة: ${subjectName}\n` +
@@ -125,11 +122,9 @@ async function startMassPublishing(ctx, userId, subjectName) {
       `🎲 الـ Shuffle مفعل\n` +
       `🔥 بالتوفيق!`;
 
-    // إرسال البانر الافتتاحي للجروب المستهدف
     await ctx.telegram.sendMessage(target.id, finalIntro, { parse_mode: undefined });
-    await new Promise((r) => setTimeout(r, 2000)); // ثانيتين راحة للعين قبل أول سؤال
+    await new Promise((r) => setTimeout(r, 2000));
 
-    // تنبيه إجباري للطلاب ببدء البوت في الخاص لحساب النتيجة
     await ctx.telegram.sendMessage(
       target.id,
       `⚠️ لمعرفة نتيجتك بعد حل المحاضرات:\nابدأ البوت أولاً 👇\n🤖 @${ctx.botInfo.username}`,
@@ -141,7 +136,6 @@ async function startMassPublishing(ctx, userId, subjectName) {
       try {
         const shuffledQ = shuffleQuestion(originalQuestion);
 
-        // إرسال الـ Poll - علني (is_anonymous: false) عشان النتايج والدرجات تشتغل صح
         const pollMessage = await ctx.telegram.sendPoll(
           target.id,
           `Q${count + 1}) ${shuffledQ.question}`,
@@ -152,7 +146,6 @@ async function startMassPublishing(ctx, userId, subjectName) {
         savePoll(pollMessage.poll.id, lectureName, shuffledQ.correct, questions.length);
         count++;
         
-        // Anti-429 delay: الانتظار التكتيكي (4 ثواني) لحماية البوت من الـ Flood
         await new Promise((r) => setTimeout(r, 4000));
 
       } catch (pollError) {
@@ -161,7 +154,7 @@ async function startMassPublishing(ctx, userId, subjectName) {
       }
     }
 
-    // 🎯 إعادة حقن بانر الختام الفخم مع زر استلام الدرجات في الخاص للطلاب (تم التصليح بفضل لمحك الذكي)
+    // 🎯 زر النتيجة الشفاف النهائي للطلاب في الجروب
     await ctx.telegram.sendMessage(
       target.id,
       `✅ انتهت أسئلة محاضرة: [ ${lectureName} ]\n\nاضغط على الزر بالأسفل لمعرفة نتيجتك التفصيلية فوراً في الخاص 📩👇`,
@@ -173,7 +166,6 @@ async function startMassPublishing(ctx, userId, subjectName) {
       }
     );
 
-    // رسالة اكتمال النشر النهائية للأدمن في الخاص
     return ctx.reply(`✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`, { parse_mode: undefined });
 
   } catch (err) {

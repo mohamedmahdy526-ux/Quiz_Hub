@@ -27,6 +27,7 @@ bot.on("message", async (ctx, next) => {
     const chat = ctx.chat;
     const userId = String(ctx.from?.id);
 
+    // 🎯 استقبال اسم المادة وتوجيهه للمحرك فوراً
     if (chat.type === "private" && global.waitingForSubject && global.waitingForSubject[userId] && ctx.message.text) {
       const subjectName = ctx.message.text.trim();
       startMassPublishing(ctx, userId, subjectName);
@@ -64,10 +65,10 @@ bot.start(async (ctx) => {
     // 🧮 الحسبة الذكية النظيفة: إجمالي الأسئلة المحلولة بيساوي مجموعهم الفعلي دايماً
     const totalAnswered = correct + wrong;
     
-    // تأمين الـ Total الحقيقي: لو الـ total المخزن مش موجود أو صفر، بنخليه الإجمالي المحلول كخط دفاع
+    // تأمين الـ Total الحقيقي منعا للـ Division by zero
     const finalTotal = (total && total > 0) ? total : totalAnswered;
     
-    // 🎯 حساب النسبة المئوية الصحيحة بالملي (الصح على إجمالي أسئلة المحاضرة الكلي)
+    // 🎯 حساب النسبة المئوية الصحيحة بالملي
     const percentage = finalTotal > 0 ? Math.round((correct / finalTotal) * 100) : 0;
 
     let rating = "⚠️ تحتاج لمزيد من المذاكرة";
@@ -76,7 +77,7 @@ bot.start(async (ctx) => {
     else if (percentage >= 70) rating = "جيد (مستوى مبشر)";
     else if (percentage >= 50) rating = "مقبول (شد حيلك)";
 
-    // طباعة التقرير بالصياغة الرسمية المتستفة والنصوص الرياضية الحقيقية 10/10 دايماً
+    // طباعة التقرير بالصياغة الرسمية المتستفة والنصوص الرياضية الحقيقية دايماً
     const resultText = 
       `📊 تقرير نتيجتك الأكاديمية:\n\n` +
       `📚 المحاضرة: ${targetLecture}\n\n` +
@@ -104,7 +105,6 @@ bot.on("poll_answer", async (ctx) => {
     const pollData = polls[pollId];
     if (!pollData) return;
 
-    // لقط البيانات المكتوبة من ملف الـ Polls بالملي
     const { lecture, correct, total } = pollData;
     const userKey = `${userId}_${lecture}`;
     
@@ -114,7 +114,7 @@ bot.on("poll_answer", async (ctx) => {
       scores[userKey] = { 
         correct: 0, 
         wrong: 0, 
-        total: Number(total || 0), // تحويل وتثبيت الرقم الإجمالي الكلي للمحاضرة
+        total: Number(total || 0), 
         answeredPolls: {} 
       };
     }
@@ -125,7 +125,6 @@ bot.on("poll_answer", async (ctx) => {
       return;
     }
 
-    // قفل السؤال الحالي باسم الطالب
     if (!scores[userKey].answeredPolls) scores[userKey].answeredPolls = {};
     scores[userKey].answeredPolls[pollId] = true;
 
@@ -153,11 +152,12 @@ bot.command("publish", async (ctx) => {
   return handlePublish(ctx);
 });
 
+// 🎯 هنا قفل اللعبة: توجيه كليكة اختيار الجروب لمنيو طلب اسم المادة فوراً!
 bot.action(/^publish_(.+)/, async (ctx) => {
   try {
     const groupId = ctx.match[1];
     await ctx.answerCbQuery();
-    return preparePublishMenu(ctx, groupId);
+    return preparePublishMenu(ctx, groupId); // فتح منيو طلب اسم المادة
   } catch (err) {}
 });
 
