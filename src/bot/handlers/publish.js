@@ -14,12 +14,18 @@ function loadGroups() {
   try { return JSON.parse(fs.readFileSync(groupsFile, "utf8")); } catch (e) { return {}; }
 }
 
-function savePoll(pollId, lectureName, correctOption, totalQuestions) {
+function savePoll(pollId, lectureName, correctOption, totalQuestions, questionText, options) {
   let polls = {};
   if (fs.existsSync(pollsFile)) {
     try { polls = JSON.parse(fs.readFileSync(pollsFile, "utf8")); } catch (e) {}
   }
-  polls[String(pollId)] = { lecture: lectureName, correct: correctOption, total: totalQuestions };
+  polls[String(pollId)] = { 
+    lecture: lectureName, 
+    correct: correctOption, 
+    total: totalQuestions,
+    questionText: questionText,
+    options: options
+  };
   fs.writeFileSync(pollsFile, JSON.stringify(polls, null, 2));
 }
 
@@ -136,14 +142,33 @@ async function startMassPublishing(ctx, userId, subjectName) {
       try {
         const shuffledQ = shuffleQuestion(originalQuestion);
 
+        // 🔊 إرسال المقطع الصوتي الطبي الاستماعي في حال وجوده مصاحباً للسؤال
+        if (shuffledQ.audio) {
+          try {
+            await ctx.telegram.sendAudio(target.id, shuffledQ.audio, {
+              caption: `🔊 استمع جيداً للمقطع الطبي المرفق للسؤال Q${count + 1} 🩺`
+            });
+            await new Promise((r) => setTimeout(r, 2000));
+          } catch (audioError) {
+            console.log("❌ Failed to send audio natively, sending as text link:", audioError.message);
+            await ctx.telegram.sendMessage(target.id, `🔊 المقطع الصوتي المرفق للسؤال Q${count + 1}:\n🔗 ${shuffledQ.audio}`);
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+
         const pollMessage = await ctx.telegram.sendPoll(
           target.id,
           `Q${count + 1}) ${shuffledQ.question}`,
           shuffledQ.options,
-          { type: "quiz", correct_option_id: shuffledQ.correct, is_anonymous: false }
+          { 
+            type: "quiz", 
+            correct_option_id: shuffledQ.correct, 
+            is_anonymous: false,
+            open_period: 45 // مؤقت تنازلي 45 ثانية تلقائي لحفظ التنافس والعدالة
+          }
         );
 
-        savePoll(pollMessage.poll.id, lectureName, shuffledQ.correct, questions.length);
+        savePoll(pollMessage.poll.id, lectureName, shuffledQ.correct, questions.length, shuffledQ.question, shuffledQ.options);
         count++;
         
         await new Promise((r) => setTimeout(r, 4000));
@@ -165,6 +190,47 @@ async function startMassPublishing(ctx, userId, subjectName) {
         ])
       }
     );
+
+    // 🔔 إرسال تنبيهات ذكية للطلاب الغائبين (الخاملين لثلاثة أيام أو أكثر)
+    try {
+      const scores = {};
+      const scoresFile = path.join(__dirname, "../../../scores.json");
+      if (fs.existsSync(scoresFile)) {
+        try { Object.assign(scores, JSON.parse(fs.readFileSync(scoresFile, "utf8"))); } catch (e) {}
+      }
+      const profiles = Object.keys(scores)
+        .filter(k => k.startsWith("profile_"))
+        .map(k => scores[k]);
+
+      for (const profile of profiles) {
+        if (profile.userId && profile.lastActive && String(profile.userId) !== String(userId)) {
+          const lastActiveDate = new Date(profile.lastActive);
+          const now = new Date();
+          const diffTime = now - lastActiveDate;
+          const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+          // إذا مر 3 أيام أو أكثر على عدم النشاط
+          if (diffDays >= 3) {
+            try {
+              const reminderMsg = 
+                `🩹 مرحباً بك يا بطل! 🩺\n\n` +
+                `لقد افتقدناك في منصة تدريب التمريض الأكاديمية خلال الأيام الماضية. 📚✨\n\n` +
+                `لقد قمنا للتو بنشر كويز جديد ومميز جداً بعنوان:\n` +
+                `📖 *${lectureName}*\n\n` +
+                `تذكر دائماً أن استمرارك في المذاكرة والتدريب يجعلك ممرضاً متميزاً قادراً على إنقاذ الأرواح! 💉❤️\n\n` +
+                `اضغط هنا لحل الكويز الجديد فوراً والارتقاء برتبتك الطبية الحالية: [ ${profile.rank || "🩺 طالب مستجد"} ] 🚀`;
+              
+              await ctx.telegram.sendMessage(profile.userId, reminderMsg, { parse_mode: "Markdown" });
+              console.log(`🔔 Sent inactivity reminder to student: ${profile.name} (${profile.userId})`);
+            } catch (sendError) {
+              console.log(`⚠️ Could not send reminder to user ${profile.userId}:`, sendError.message);
+            }
+          }
+        }
+      }
+    } catch (reminderErr) {
+      console.log("❌ Smart Reminders execution failed:", reminderErr.message);
+    }
 
     return ctx.reply(`✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`, { parse_mode: undefined });
 

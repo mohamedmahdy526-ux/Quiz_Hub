@@ -65,6 +65,17 @@ function parseQuestions(text) {
         current.correct = answerMap[correctLetter];
       }
     }
+    /**
+     * 4️⃣ لقطة الملف الصوتي الطبي المرفق (Audio: file_id_or_url)
+     */
+    else if (/^Audio\s*:\s*(.+)/i.test(line)) {
+      if (!current) continue;
+
+      const match = line.match(/^Audio\s*:\s*(.+)/i);
+      if (match && match[1]) {
+        current.audio = match[1].trim();
+      }
+    }
   }
 
   // حفظ آخر سؤال في الحلقة

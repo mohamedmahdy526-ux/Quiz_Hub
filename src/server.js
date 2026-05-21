@@ -1,5 +1,6 @@
 require("dotenv").config(); // شحن البيئة المحيطة والـ Tokens فوراً
 const bot = require("./bot/index"); // استدعاء كائن البوت المطهر
+const commands = require("./bot/commands"); // استيراد الأوامر الفعالة
 
 // 🎯 قفل اللعبة هنا: الـ Launch الفريد والوحيد المعتمد على مستوى السيستم بالكامل
 bot.launch({
@@ -11,6 +12,15 @@ bot.launch({
   ]
 }).then(() => {
   console.log("🤖 Telegram Quiz Bot is fully launched with Deep Allowed Updates! [ACTIVE]");
+  
+  // تسجيل الأوامر الفعالة تلقائياً لتظهر للمستخدم في قائمة التليجرام الشفافة
+  bot.telegram.setMyCommands(commands)
+    .then(() => {
+      console.log("✔ Bot commands set successfully in Telegram UI.");
+    })
+    .catch((err) => {
+      console.error("❌ Failed to set Telegram commands:", err.message);
+    });
 }).catch((err) => {
   console.error("❌ Launch Critical Error:", err.message);
 });
