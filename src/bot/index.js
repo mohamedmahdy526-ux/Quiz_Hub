@@ -22,6 +22,15 @@ function saveData(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
+// 📱 قائمة الأزرار الرئيسية التفاعلية لجهاز الممرض الأكاديمي
+function getMainMenuKeyboard() {
+  return Markup.keyboard([
+    ["👤 ملفي الأكاديمي", "🏆 لوحة الشرف"],
+    ["📜 شهاداتي ونتائجي", "🧠 شرح أخطائي"],
+    ["ℹ️ مساعدة وتوجيه"]
+  ]).resize();
+}
+
 // 🎖️ حساب الرتبة والمستوى بناءً على نقاط الخبرة التراكمية (Gamification)
 function getRankDetails(xp) {
   if (xp <= 100) {
@@ -142,7 +151,15 @@ bot.start(async (ctx) => {
       ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {})
     });
   }
-  ctx.reply("🚀 أهلاً بك في نظام الكويزات الأكاديمي! البوت مستعد الآن لرصد وحفظ نتائجك فوراً وبشكل تلقائي.", { parse_mode: undefined });
+  return ctx.reply(
+    `🚀 *أهلاً بك في نظام الكويزات التمريضية الأكاديمي!* 🩺✨\n\n` +
+    `البوت مستعد الآن لرصد وحفظ نتائجك تلقائياً وبدقة بالغة.\n` +
+    `استخدم القائمة أدناه للتنقل ومتابعة مستواك العلمي ورتبتك الطبية الحالية!`,
+    { 
+      parse_mode: "Markdown",
+      ...getMainMenuKeyboard()
+    }
+  );
 });
 
 // 🎯 مراقبة إجابات الطلاب وحظر التغيير والتكرار التكتيكي (Anti-Cheat Engine)
@@ -438,6 +455,247 @@ ${q.options.map((opt, i) => `${i + 1}. ${opt}`).join("\n")}
   } catch (err) {
     console.log("❌ AI Explanation Handler Error:", err.message);
   }
+});
+
+// 📱 أمر القائمة يدوياً لفتح أزرار التفاعل بأي وقت
+bot.command("menu", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  return ctx.reply("📱 *القائمة الرئيسية التفاعلية لجهازك التمريضي:*", {
+    parse_mode: "Markdown",
+    ...getMainMenuKeyboard()
+  });
+});
+
+// 👤 معالج الضغط على "👤 ملفي الأكاديمي"
+bot.hears("👤 ملفي الأكاديمي", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  const userId = String(ctx.from.id);
+  const scores = loadData(scoresFile);
+  const profileKey = `profile_${userId}`;
+  const profile = scores[profileKey];
+
+  if (!profile) {
+    return ctx.reply(
+      `🩺 *ملفك التعريفي التمريضي:*\n\n` +
+      `👤 الاسم: *${ctx.from.first_name || "طالب مستجد"}*\n` +
+      `⚡ نقاط الخبرة (XP): *0 XP*\n` +
+      `🎖️ الرتبة الحالية: *🩺 طالب تمريض مستجد (Novice Student)*\n\n` +
+      `💡 _ابدأ بحل الكويزات في المجموعات الطبية لكسب أولى نقاط خبرتك والترقية السريعة!_`,
+      { parse_mode: "Markdown" }
+    );
+  }
+
+  const xp = profile.xp || 0;
+  const rankInfo = getRankDetails(xp);
+  
+  let totalCorrect = 0;
+  let totalWrong = 0;
+  let quizzesCount = 0;
+  Object.keys(scores).forEach(key => {
+    if (key.startsWith(`${userId}_`) && !key.startsWith("profile_")) {
+      totalCorrect += scores[key].correct || 0;
+      totalWrong += scores[key].wrong || 0;
+      quizzesCount++;
+    }
+  });
+
+  const profileText = 
+    `🩺 *الملف الأكاديمي للممرض المتميز:* \n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `👤 *الاسم:* ${profile.name}\n` +
+    `⚡ *نقاط الخبرة (XP):* ${xp} XP\n` +
+    `🎖️ *الرتبة الطبية:* ${rankInfo.badge} ${rankInfo.title}\n` +
+    `${rankInfo.nextXP ? `⏳ *المتبقي للترقية التالية:* ${rankInfo.nextXP - xp} XP\n` : "✨ *لقد وصلت إلى أعلى رتبة طبية تمريضية!* 🎓\n"}\n` +
+    `📊 *الإحصائيات السريرية الشاملة:*\n` +
+    `📚 *عدد المحاضرات التي تم حلها:* ${quizzesCount}\n` +
+    `✅ *مجموع الإجابات الصحيحة:* ${totalCorrect}\n` +
+    `❌ *مجموع الإجابات الخاطئة:* ${totalWrong}\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `🏥 *دمتم عوناً وسنداً للمرضى ورعاة للإنسانية!* ✨`;
+
+  return ctx.reply(profileText, { parse_mode: "Markdown" });
+});
+
+// 🏆 معالج الضغط على "🏆 لوحة الشرف"
+bot.hears("🏆 لوحة الشرف", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  const scores = loadData(scoresFile);
+  
+  const profiles = [];
+  Object.keys(scores).forEach(key => {
+    if (key.startsWith("profile_")) {
+      profiles.push(scores[key]);
+    }
+  });
+
+  if (profiles.length === 0) {
+    return ctx.reply("🏆 *لوحة الشرف الطبية فارغة حالياً. كن أول من يتصدرها بحل الكويزات!*");
+  }
+
+  profiles.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+
+  let leaderboardText = `🏆 *لوحة الشرف الأكاديمية لطلاب التمريض:* \n`;
+  leaderboardText += `🥇 متصدري الرعاية الصحية والتميز السريري 🥇\n`;
+  leaderboardText += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  const top10 = profiles.slice(0, 10);
+  top10.forEach((p, idx) => {
+    let medal = "🔹";
+    if (idx === 0) medal = "🥇";
+    else if (idx === 1) medal = "🥈";
+    else if (idx === 2) medal = "🥉";
+
+    const rankInfo = getRankDetails(p.xp || 0);
+    leaderboardText += `${medal} *الترتيب ${idx + 1}:* ${p.name}\n` +
+                        `    ⚡ *النقاط:* ${p.xp || 0} XP | الرتبة: ${rankInfo.badge}\n\n`;
+  });
+
+  leaderboardText += `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+                     `💡 _اجتهد في الكويزات القادمة لتسجيل اسمك في لوحة المتفوقين!_ 🩺✨`;
+
+  return ctx.reply(leaderboardText, { parse_mode: "Markdown" });
+});
+
+// 📜 معالج الضغط على "📜 شهاداتي ونتائجي"
+bot.hears("📜 شهاداتي ونتائجي", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  const userId = String(ctx.from.id);
+  const scores = loadData(scoresFile);
+
+  const results = [];
+  Object.keys(scores).forEach(key => {
+    if (key.startsWith(`${userId}_`) && !key.startsWith("profile_")) {
+      const lectureClean = key.replace(`${userId}_`, "");
+      results.push({
+        lecture: lectureClean,
+        ...scores[key]
+      });
+    }
+  });
+
+  if (results.length === 0) {
+    return ctx.reply("❌ *لم تقم بحل أي كويزات بعد. شارك في الكويزات بالجروب لتظهر نتائجك هنا!* 📚");
+  }
+
+  let text = `📜 *سجل نتائجك وشهاداتك التمريضية:* \n`;
+  text += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+  const inlineButtons = [];
+
+  results.forEach(res => {
+    const totalAnswered = res.correct + res.wrong;
+    const finalTotal = (res.total && res.total > 0) ? res.total : totalAnswered;
+    const percentage = finalTotal > 0 ? Math.round((res.correct / finalTotal) * 100) : 0;
+
+    text += `📚 *المحاضرة:* ${res.lecture}\n` +
+            `📊 *النتيجة:* ${res.correct}/${finalTotal} (${percentage}%)\n`;
+    
+    if (percentage >= 90) {
+      text += `🏆 *الحالة:* حصلت على الشهادة بنجاح 📜🎖️\n\n`;
+      inlineButtons.push([
+        Markup.button.callback(`📜 شهادة: ${res.lecture.substring(0, 20)}...`, `cert_${res.lecture.replace(/\s+/g, '_')}`)
+      ]);
+    } else {
+      text += `💡 *الحالة:* تحتاج 90% للحصول على شهادة التميز\n\n`;
+    }
+  });
+
+  text += `━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `💡 _اضغط على أي زر أدناه لإعادة عرض شهادتك الفاخرة بالكامل!_`;
+
+  if (inlineButtons.length > 0) {
+    return ctx.reply(text, {
+      parse_mode: "Markdown",
+      ...Markup.inlineKeyboard(inlineButtons)
+    });
+  } else {
+    return ctx.reply(text, { parse_mode: "Markdown" });
+  }
+});
+
+// 📜 معالج استرداد الشهادة الفردية عبر الأزرار التفاعلية
+bot.action(/^cert_(.+)/, async (ctx) => {
+  try {
+    const lectureClean = ctx.match[1].replace(/_/g, " ").trim();
+    const userId = String(ctx.from.id);
+    const scores = loadData(scoresFile);
+    const userKey = `${userId}_${lectureClean}`;
+    const profileKey = `profile_${userId}`;
+
+    if (!scores[userKey]) {
+      return ctx.answerCbQuery("❌ لم يتم العثور على النتيجة.");
+    }
+
+    const { correct, wrong, total } = scores[userKey];
+    const totalAnswered = correct + wrong;
+    const finalTotal = (total && total > 0) ? total : totalAnswered;
+    const profile = scores[profileKey] || { xp: 0 };
+    const rankInfo = getRankDetails(profile.xp || 0);
+
+    const name = profile.name || `${ctx.from.first_name || ""} ${ctx.from.last_name || ""}`.trim() || `User_${userId}`;
+    const certificate = generateUnicodeCertificate(name, lectureClean, correct, finalTotal, `${rankInfo.badge} ${rankInfo.title}`);
+
+    await ctx.answerCbQuery();
+    await ctx.reply(certificate, { parse_mode: "Markdown" });
+  } catch (err) {
+    console.log("❌ Cert Callback Error:", err.message);
+  }
+});
+
+// 🧠 معالج الضغط على "🧠 شرح أخطائي"
+bot.hears("🧠 شرح أخطائي", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  const userId = String(ctx.from.id);
+  const scores = loadData(scoresFile);
+
+  const errorLectures = [];
+  Object.keys(scores).forEach(key => {
+    if (key.startsWith(`${userId}_`) && !key.startsWith("profile_")) {
+      const data = scores[key];
+      if (data.wrong > 0) {
+        const lectureClean = key.replace(`${userId}_`, "");
+        errorLectures.push(lectureClean);
+      }
+    }
+  });
+
+  if (errorLectures.length === 0) {
+    return ctx.reply("🎉 *أنت ممرض ممتاز! ليس لديك أي أخطاء مسجلة تحتاج لشرح بالذكاء الاصطناعي حالياً.* 🩺✨");
+  }
+
+  let text = `🧠 *رفيقك الطبي بالذكاء الاصطناعي لتوضيح الأخطاء:* \n\n` +
+             `اختر المحاضرة التي ترغب في مراجعة أخطائها وتلقي شرح سريري مفصل لها من Gemini AI:`;
+
+  const inlineButtons = errorLectures.map(lecture => {
+    return [Markup.button.callback(`🧠 شرح: ${lecture.substring(0, 20)}...`, `explain_${lecture.replace(/\s+/g, '_')}`)];
+  });
+
+  return ctx.reply(text, {
+    parse_mode: "Markdown",
+    ...Markup.inlineKeyboard(inlineButtons)
+  });
+});
+
+// ℹ️ معالج الضغط على "ℹ️ مساعدة وتوجيه"
+bot.hears("ℹ️ مساعدة وتوجيه", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  
+  const helpText = 
+    `ℹ️ *دليل التوجيه السريع لطلبة التمريض ورعاة الصحة:* \n\n` +
+    `📚 *كيفية عمل البوت والاستفادة منه:*\n` +
+    `1️⃣ *حل الكويزات:* قم بالإجابة على أسئلة الكويزات التي ينشرها الأدمن في الجروب.\n` +
+    `2️⃣ *كسب نقاط الخبرة (XP):* كل إجابة صحيحة تمنحك *+10 XP* لرفع رتبتك الطبية.\n` +
+    `3️⃣ *الشهادات:* تحقيق درجة *≥ 90%* يمنحك شهادة تفوق Unicode معتمدة بالبوت.\n` +
+    `4️⃣ *الشرح بالذكاء الاصطناعي:* إذا أخطأت في أي سؤال، يمكنك مراجعته والحصول على الشرح السريري الذهبي فوراً بضغطة زر واحدة!\n\n` +
+    `🎖️ *نظام الترقيات والرتب الطبية:*\n` +
+    `🩺 *0 - 100 XP:* طالب تمريض مستجد (Novice Student)\n` +
+    `🩹 *101 - 300 XP:* ممرض ممارس متدرب (Practicing Intern)\n` +
+    `💉 *301 - 600 XP:* أخصائي رعاية عامة (Staff Nurse)\n` +
+    `🫁 *601 - 1000 XP:* أخصائي عناية مركزة وطوارئ (ICU Specialist)\n` +
+    `🎓 *1001+ XP:* استشاري تمريض أكاديمي (Academic Consultant)\n\n` +
+    `🏥 *نتمنى لكم مسيرة علمية سريرية مليئة بالتميز!* ✨`;
+
+  return ctx.reply(helpText, { parse_mode: "Markdown" });
 });
 
 module.exports = bot;

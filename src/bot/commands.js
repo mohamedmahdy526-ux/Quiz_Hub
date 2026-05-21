@@ -1,7 +1,11 @@
 const commands = [
   {
     command: 'start',
-    description: '🚀 تشغيل البوت ورصد النتائج تلقائياً'
+    description: '🚀 تشغيل البوت وفتح القائمة الرئيسية'
+  },
+  {
+    command: 'menu',
+    description: '📱 فتح القائمة الرئيسية التفاعلية'
   },
   {
     command: 'publish',
