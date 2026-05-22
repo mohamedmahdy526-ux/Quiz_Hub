@@ -10,5 +10,51 @@
       "5789593847466035371": true,
       "5789593847466035372": true
     }
+  },
+  "profile_437169371": {
+    "userId": "437169371",
+    "name": "𓆩мσo𓆪",
+    "xp": 250,
+    "rank": "🩹 ممرض ممارس متدرب (Practicing Intern)",
+    "lastActive": "2026-05-22T18:10:34.089Z"
+  },
+  "437169371_Health promotion -": {
+    "correct": 4,
+    "wrong": 1,
+    "total": 5,
+    "answeredPolls": {
+      "5803256520686699740": true,
+      "5803256520686699741": true,
+      "5803256520686699742": true,
+      "5803256520686699743": true,
+      "5803256520686699744": true
+    },
+    "answersLog": {
+      "5803256520686699740": {
+        "chosen": 3,
+        "correct": 1,
+        "isCorrect": false
+      },
+      "5803256520686699741": {
+        "chosen": 3,
+        "correct": 3,
+        "isCorrect": true
+      },
+      "5803256520686699742": {
+        "chosen": 2,
+        "correct": 2,
+        "isCorrect": true
+      },
+      "5803256520686699743": {
+        "chosen": 2,
+        "correct": 2,
+        "isCorrect": true
+      },
+      "5803256520686699744": {
+        "chosen": 5,
+        "correct": 5,
+        "isCorrect": true
+      }
+    }
   }
 }

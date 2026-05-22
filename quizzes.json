@@ -1,0 +1,109 @@
+{
+  "437169371": {
+    "lectureName": "Health promotion -",
+    "questions": [
+      {
+        "question": "A planning combination of educational, political, regulatory and organizational support for action conditions of living conducive to health of individuals, groups or community",
+        "options": [
+          "Health education",
+          "Health promotion",
+          "Health protection",
+          "All above"
+        ],
+        "correct": 1
+      },
+      {
+        "question": "Health promotion it's.....",
+        "options": [
+          "Process of enabling people to increase control over and improve their health",
+          "Process which empowers families and communities to improve quality of life",
+          "Emphasize not only prevention of disease but the promotion of positive good health",
+          "All above"
+        ],
+        "correct": 3
+      },
+      {
+        "question": "Health promotion focusing on...",
+        "options": [
+          "Person only",
+          "People at risk only",
+          "Population as whole"
+        ],
+        "correct": 2
+      },
+      {
+        "question": "Goal of health promotion...",
+        "options": [
+          "Raise the level of health of an individual, families and community",
+          "Enable person to control over their wellbeing",
+          "Both"
+        ],
+        "correct": 2
+      },
+      {
+        "question": "Actions outlined in Ottawa Charter to direct health promotion include....",
+        "options": [
+          "Build healthy public policy",
+          "Create supportive environment",
+          "Strengthen community action",
+          "Develop personal skills",
+          "Reorient health services",
+          "All above"
+        ],
+        "correct": 5
+      }
+    ]
+  },
+  "Health promotion -": [
+    {
+      "question": "A planning combination of educational, political, regulatory and organizational support for action conditions of living conducive to health of individuals, groups or community",
+      "options": [
+        "Health education",
+        "Health promotion",
+        "Health protection",
+        "All above"
+      ],
+      "correct": 1
+    },
+    {
+      "question": "Health promotion it's.....",
+      "options": [
+        "Process of enabling people to increase control over and improve their health",
+        "Process which empowers families and communities to improve quality of life",
+        "Emphasize not only prevention of disease but the promotion of positive good health",
+        "All above"
+      ],
+      "correct": 3
+    },
+    {
+      "question": "Health promotion focusing on...",
+      "options": [
+        "Person only",
+        "People at risk only",
+        "Population as whole"
+      ],
+      "correct": 2
+    },
+    {
+      "question": "Goal of health promotion...",
+      "options": [
+        "Raise the level of health of an individual, families and community",
+        "Enable person to control over their wellbeing",
+        "Both"
+      ],
+      "correct": 2
+    },
+    {
+      "question": "Actions outlined in Ottawa Charter to direct health promotion include....",
+      "options": [
+        "Build healthy public policy",
+        "Create supportive environment",
+        "Strengthen community action",
+        "Develop personal skills",
+        "Reorient health services",
+        "All above"
+      ],
+      "correct": 5
+    }
+  ]
+}

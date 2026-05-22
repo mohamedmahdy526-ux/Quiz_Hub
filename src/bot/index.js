@@ -4,7 +4,13 @@ const path = require("path");
 const https = require("https");
 
 const { handleUpload } = require("./handlers/upload");
-const { handlePublish, preparePublishMenu, startMassPublishing } = require("./handlers/publish");
+const { handlePublish, preparePublishMenu, startMassPublishing, savePoll, shuffleQuestion } = require("./handlers/publish");
+
+// 🌳 استيراد معالجات المنصة الأكاديمية التفاعلية الجديدة
+const db = require("../database/db");
+const { renderMenu } = require("./handlers/renderMenu");
+const { handleIncomingTextAndFiles } = require("./handlers/textReceiver");
+const { handleAddClick, handleSelectType, handleCancelAdd, handleDeleteClick, handleConfirmDelete, handlePerformDelete, handleCancelDelete, handleManageClick, handleSelectManageNode, handleRenameRequest, handleMoveRequest, handlePerformMove } = require("./handlers/adminActions");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 const adminId = process.env.ADMIN_ID;
@@ -23,12 +29,25 @@ function saveData(file, data) {
 }
 
 // 📱 قائمة الأزرار الرئيسية التفاعلية لجهاز الممرض الأكاديمي
-function getMainMenuKeyboard() {
-  return Markup.keyboard([
-    ["👤 ملفي الأكاديمي", "🏆 لوحة الشرف"],
-    ["📜 شهاداتي ونتائجي", "🧠 شرح أخطائي"],
-    ["ℹ️ مساعدة وتوجيه"]
-  ]).resize();
+function getMainMenuKeyboard(userId) {
+  const isAdmin = String(userId) === String(process.env.ADMIN_ID);
+  if (isAdmin) {
+    return Markup.keyboard([
+      ["📂 تمريض مكثف المنيا"],
+      ["➕ إضافة عنصر", "⚙️ تعديل ونقل", "🗑️ حذف عنصر"],
+      ["📝 إنشاء ونشر كويز"],
+      ["👤 ملفي الأكاديمي", "🏆 لوحة الشرف"],
+      ["📜 شهاداتي ونتائجي", "🧠 شرح أخطائي"],
+      ["ℹ️ مساعدة وتوجيه", "💬 تواصل مع الإدارة"]
+    ]).resize();
+  } else {
+    return Markup.keyboard([
+      ["📂 تمريض مكثف المنيا"],
+      ["👤 ملفي الأكاديمي", "🏆 لوحة الشرف"],
+      ["📜 شهاداتي ونتائجي", "🧠 شرح أخطائي"],
+      ["ℹ️ مساعدة وتوجيه", "💬 تواصل مع الإدارة"]
+    ]).resize();
+  }
 }
 
 // 🎖️ حساب الرتبة والمستوى بناءً على نقاط الخبرة التراكمية (Gamification)
@@ -48,18 +67,26 @@ function getRankDetails(xp) {
 
 // 📜 توليد كارت التفوق الأكاديمي والبرواز الطبي الأنيق بنظام الـ Unicode
 function generateUnicodeCertificate(name, lecture, correct, total, rank) {
+  const escapeHtml = (text) => {
+    if (!text) return '';
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  };
+
   const border = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━";
   const cert = 
-    `📜 *شهادة تفوق ورعاية تمريضية* 📜\n` +
-    `\`${border}\`\n` +
+    `📜 <b>شهادة تفوق ورعاية تمريضية</b> 📜\n` +
+    `<code>${border}</code>\n` +
     `🏆 يسر منصة التدريب الطبي أن تمنح:\n` +
-    `👤 *${name}*\n` +
+    `👤 <b>${escapeHtml(name)}</b>\n` +
     `هذه الشهادة لتميزه الاستثنائي في حل كويز:\n` +
-    `📚 *${lecture}*\n\n` +
-    `🎯 الإجابات الصحيحة: *${correct}* من أصل *${total}*\n` +
-    `🎖️ الرتبة الطبية الحالية: *${rank}*\n` +
-    `\`${border}\`\n` +
-    `✨ *تمنياتنا لك بمستقبل طبي مشرق لخدمة الإنسانية* 🩺💉`;
+    `📚 <b>${escapeHtml(lecture)}</b>\n\n` +
+    `🎯 الإجابات الصحيحة: <b>${correct}</b> من أصل <b>${total}</b>\n` +
+    `🎖️ الرتبة الطبية الحالية: <b>${escapeHtml(rank)}</b>\n` +
+    `<code>${border}</code>\n` +
+    `✨ <b>تمنياتنا لك بمستقبل طبي مشرق لخدمة الإنسانية</b> 🩺💉`;
   return cert;
 }
 
@@ -68,6 +95,144 @@ bot.on("message", async (ctx, next) => {
   try {
     const chat = ctx.chat;
     const userId = String(ctx.from?.id);
+
+    // 🌳 حارس تصفح وإدارة شجرة "تمريض مكثف المنيا" في الخاص
+    if (chat.type === "private") {
+      const { getSession, clearSession, setSession } = require("../utils/conversationSessions");
+      const session = getSession(userId);
+
+      if (session) {
+        const text = ctx.message.text ? ctx.message.text.trim() : "";
+
+        // أ) إذا كان الأدمن في إحدى خطوات الرفع وكان يكبس إلغاء أو إنهاء
+        if ((text === "❌ إلغاء العملية" || text === "❌ إنهاء والعودة للتصفح") && String(userId) === String(adminId)) {
+          return handleCancelAdd(ctx);
+        }
+
+        // ب) إذا كان الأدمن يختار نوع العنصر المطلوب إضافته
+        if (session.step === 'waiting_type' && String(userId) === String(adminId)) {
+          return handleSelectType(ctx, text);
+        }
+
+        // ج) إذا كان الأدمن في إحدى خطوات إدخال البيانات (الاسم / الملف / الصوت / الكويز / الصورة / الرسالة / إعادة التسمية)
+        if (session.step && ['waiting_folder_name', 'waiting_file', 'waiting_audio', 'waiting_quiz', 'waiting_photo', 'waiting_text_message', 'waiting_rename_name'].includes(session.step) && String(userId) === String(adminId)) {
+          return handleIncomingTextAndFiles(ctx);
+        }
+
+        // د) إذا كان المستخدم (أو الأدمن) في وضع التصفح الشجري النشط
+        if (session.currentFolderId && !session.step) {
+          if (text === "🔙 رجوع للقائمة الرئيسية") {
+            clearSession(userId);
+            return ctx.reply("🏠 تم الرجوع للقائمة الرئيسية بنجاح.", getMainMenuKeyboard(userId));
+          }
+
+          if (text === "🔙 رجوع للخلف") {
+            if (session.currentFolderId === 'root') {
+              clearSession(userId);
+              return ctx.reply("🏠 تم الرجوع للقائمة الرئيسية بنجاح.", getMainMenuKeyboard(userId));
+            } else {
+              const currentNode = db.prepare('SELECT parent_id FROM nodes WHERE id = ?').get(Number(session.currentFolderId));
+              const parentId = currentNode ? currentNode.parent_id : null;
+              session.currentFolderId = parentId === null ? 'root' : parentId;
+              setSession(userId, session);
+              return renderMenu(ctx, session.currentFolderId);
+            }
+          }
+
+          if (text === "➕ إضافة عنصر هنا" && String(userId) === String(adminId)) {
+            return handleAddClick(ctx);
+          }
+
+          if (text === "⚙️ تعديل ونقل" && String(userId) === String(adminId)) {
+            return handleManageClick(ctx);
+          }
+
+          if (text === "🗑️ حذف عنصر" && String(userId) === String(adminId)) {
+            return handleDeleteClick(ctx);
+          }
+
+          // مطابقة اسم النود الفرعية تحت المجلد الحالي
+          const cleanNodeName = (str) => str.replace(/^(📁|📄|🎧|📝|➕|🔙)\s*/, "").trim();
+          const cleanName = cleanNodeName(text);
+          const dbParentId = session.currentFolderId === 'root' ? null : Number(session.currentFolderId);
+
+          const childNode = db.prepare(`
+            SELECT * FROM nodes
+            WHERE parent_id IS ? AND name = ?
+          `).get(dbParentId, cleanName);
+
+          if (childNode) {
+            if (childNode.type === 'folder' || childNode.type === 'category') {
+              session.currentFolderId = childNode.id;
+              setSession(userId, session);
+              return renderMenu(ctx, childNode.id);
+            }
+
+            if (childNode.type === 'file') {
+              return ctx.replyWithDocument(childNode.telegram_file_id, {
+                caption: `📄 **الملف الأكاديمي:**\n📖 [ ${childNode.name} ]\n\n🏫 تمريض مكثف المنيا ✨`
+              });
+            }
+
+            if (childNode.type === 'audio') {
+              return ctx.replyWithAudio(childNode.telegram_file_id, {
+                caption: `🎧 **الشرح الصوتي:**\n📖 [ ${childNode.name} ]\n\n🏫 استماعاً موفقاً! ✨`
+              });
+            }
+
+            if (childNode.type === 'quiz') {
+              const { loadQuizzes } = require("../utils/storage");
+              const quizzes = loadQuizzes();
+              const quizData = quizzes[`node_${childNode.id}`];
+
+              if (!quizData || !quizData.questions || quizData.questions.length === 0) {
+                return ctx.reply('❌ عذراً، لا توجد أسئلة مسجلة في هذا الكويز حالياً!');
+              }
+
+              await ctx.reply(
+                `🧠 **بدء الكويز التفاعلي الشجري:**\n\n` +
+                `📖 العنوان: [ ${childNode.name} ]\n` +
+                `🎯 عدد الأسئلة: [ ${quizData.questions.length} سؤال ]\n\n` +
+                `سيتم إرسال الأسئلة إليك تتابقاً بالأسفل. بالتوفيق! 🩺✨`
+              );
+
+              let count = 0;
+              for (let originalQuestion of quizData.questions) {
+                try {
+                  const shuffledQ = shuffleQuestion(originalQuestion);
+                  const pollMessage = await ctx.telegram.sendPoll(
+                    ctx.chat.id,
+                    `Q${count + 1}) ${shuffledQ.question}`,
+                    shuffledQ.options,
+                    { 
+                      type: "quiz", 
+                      correct_option_id: shuffledQ.correct, 
+                      is_anonymous: false
+                    }
+                  );
+
+                  savePoll(pollMessage.poll.id, childNode.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options);
+                  count++;
+                  await new Promise((r) => setTimeout(r, 3000));
+                } catch (pe) {
+                  console.error(pe);
+                }
+              }
+
+              return ctx.reply(
+                `🏁 **اكتمل إرسال أسئلة كويز:** [ ${childNode.name} ]\n\n` +
+                `اضغط على الزر بالأسفل لمعرفة تقييم نتيجتك وحساب نقاطك والحصول على الشهادة فوراً! 👇`,
+                {
+                  ...Markup.inlineKeyboard([
+                    [Markup.button.url("📊 عرض تقرير النتيجة التفصيلي", `t.me/${ctx.botInfo.username}?start=result_${childNode.name.replace(/\s+/g, '_')}`)]
+                  ])
+                }
+              );
+            }
+          }
+        }
+      }
+    }
 
     if (chat.type === "private" && global.waitingForSubject && global.waitingForSubject[userId] && ctx.message.text) {
       const subjectName = ctx.message.text.trim();
@@ -82,7 +247,9 @@ bot.on("message", async (ctx, next) => {
         saveData(groupsFile, groups);
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error("❌ Message Handler Error:", err.message);
+  }
   return next();
 });
 
@@ -107,7 +274,7 @@ bot.start(async (ctx) => {
     const { correct, wrong, total } = scores[userKey];
     
     const totalAnswered = correct + wrong;
-    const finalTotal = (total && total > 0) ? total : totalAnswered;
+    const finalTotal = Math.max(total || 0, totalAnswered);
     const percentage = finalTotal > 0 ? Math.round((correct / finalTotal) * 100) : 0;
 
     let rating = "⚠️ تحتاج لمزيد من المذاكرة";
@@ -137,7 +304,7 @@ bot.start(async (ctx) => {
     if (percentage >= 90) {
       const name = profile.name || `${ctx.from.first_name || ""} ${ctx.from.last_name || ""}`.trim() || `User_${userId}`;
       const certificate = generateUnicodeCertificate(name, targetLecture, correct, finalTotal, `${rankInfo.badge} ${rankInfo.title}`);
-      await ctx.reply(certificate, { parse_mode: "Markdown" });
+      await ctx.reply(certificate, { parse_mode: "HTML" });
     }
 
     // إرفاق زر الشرح الذكي بالذكاء الاصطناعي لو عنده أخطاء
@@ -157,7 +324,7 @@ bot.start(async (ctx) => {
     `استخدم القائمة أدناه للتنقل ومتابعة مستواك العلمي ورتبتك الطبية الحالية!`,
     { 
       parse_mode: "Markdown",
-      ...getMainMenuKeyboard()
+      ...getMainMenuKeyboard(ctx.from?.id)
     }
   );
 });
@@ -167,6 +334,13 @@ bot.on("poll_answer", async (ctx) => {
   try {
     console.log("🔥 POLL ANSWER RECEIVED LAUNCHED!");
     const answer = ctx.pollAnswer;
+    
+    // حماية ضد عمليات سحب التصويت (Retracted votes)
+    if (!answer.option_ids || answer.option_ids.length === 0) {
+      console.log("ℹ️ Poll answer retracted by user, ignored.");
+      return;
+    }
+
     const pollId = String(answer.poll_id);
     const userId = String(answer.user.id);
     
@@ -250,9 +424,48 @@ bot.on("poll_answer", async (ctx) => {
   }
 });
 
-bot.on("document", async (ctx) => {
+bot.on("document", async (ctx, next) => {
   if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  
+  // لو الأدمن فاتح جلسة لرفع ملفات الشجرة، وجهها لمعالج الشجرة
+  const { getSession } = require("../utils/conversationSessions");
+  if (getSession(ctx.from.id)) {
+    return handleIncomingTextAndFiles(ctx);
+  }
+  
   return handleUpload(ctx);
+});
+
+// 🌳 تسجيل أفعال وأزرار الشجرة والمنصة الأكاديمية
+bot.hears("📂 تمريض مكثف المنيا", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  const { setSession } = require("../utils/conversationSessions");
+  setSession(ctx.from.id, {
+    currentFolderId: 'root'
+  });
+  return renderMenu(ctx, 'root');
+});
+
+bot.hears("📝 إنشاء ونشر كويز", async (ctx) => {
+  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  return ctx.reply(
+    `📤 **نظام إنشاء ونشر الكويزات (خارج المنصة الشجرية)**\n` +
+    `------------------------------------\n` +
+    `✍️ الخطوة 1: يرجى إرسال ملف الأسئلة بصيغة \`.txt\` الآن.\n\n` +
+    `وسيقوم البوت باستخراج الأسئلة وتجهيزها للتأكيد لتتمكن من نشرها مباشرة في الجروبات والمجموعات باستخدام أمر /publish !`,
+    {
+      parse_mode: 'Markdown'
+    }
+  );
+});
+
+bot.command("browse", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  const { setSession } = require("../utils/conversationSessions");
+  setSession(ctx.from.id, {
+    currentFolderId: 'root'
+  });
+  return renderMenu(ctx, 'root');
 });
 
 bot.command("publish", async (ctx) => {
@@ -271,11 +484,8 @@ bot.action(/^publish_(.+)/, async (ctx) => {
 // 🧠 استدعاء خادم Gemini AI بأسلوب أصيل وخفيف دون أي مكتبات خارجية ثقيلة مع نظام تنقل احتياطي للموديلات
 function callGeminiAPI(apiKey, prompt) {
   const models = [
-    "gemini-2.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash",
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash"
+    "gemini-2.0-flash",
+    "gemini-1.5-flash"
   ];
 
   const makeRequest = (modelName) => {
@@ -462,7 +672,7 @@ bot.command("menu", async (ctx) => {
   if (ctx.chat.type !== "private") return;
   return ctx.reply("📱 *القائمة الرئيسية التفاعلية لجهازك التمريضي:*", {
     parse_mode: "Markdown",
-    ...getMainMenuKeyboard()
+    ...getMainMenuKeyboard(ctx.from?.id)
   });
 });
 
@@ -584,7 +794,7 @@ bot.hears("📜 شهاداتي ونتائجي", async (ctx) => {
 
   results.forEach(res => {
     const totalAnswered = res.correct + res.wrong;
-    const finalTotal = (res.total && res.total > 0) ? res.total : totalAnswered;
+    const finalTotal = Math.max(res.total || 0, totalAnswered);
     const percentage = finalTotal > 0 ? Math.round((res.correct / finalTotal) * 100) : 0;
 
     text += `📚 *المحاضرة:* ${res.lecture}\n` +
@@ -628,7 +838,7 @@ bot.action(/^cert_(.+)/, async (ctx) => {
 
     const { correct, wrong, total } = scores[userKey];
     const totalAnswered = correct + wrong;
-    const finalTotal = (total && total > 0) ? total : totalAnswered;
+    const finalTotal = Math.max(total || 0, totalAnswered);
     const profile = scores[profileKey] || { xp: 0 };
     const rankInfo = getRankDetails(profile.xp || 0);
 
@@ -636,7 +846,7 @@ bot.action(/^cert_(.+)/, async (ctx) => {
     const certificate = generateUnicodeCertificate(name, lectureClean, correct, finalTotal, `${rankInfo.badge} ${rankInfo.title}`);
 
     await ctx.answerCbQuery();
-    await ctx.reply(certificate, { parse_mode: "Markdown" });
+    await ctx.reply(certificate, { parse_mode: "HTML" });
   } catch (err) {
     console.log("❌ Cert Callback Error:", err.message);
   }
@@ -696,6 +906,164 @@ bot.hears("ℹ️ مساعدة وتوجيه", async (ctx) => {
     `🏥 *نتمنى لكم مسيرة علمية سريرية مليئة بالتميز!* ✨`;
 
   return ctx.reply(helpText, { parse_mode: "Markdown" });
+});
+
+// 💬 معالج الضغط على "💬 تواصل مع الإدارة" للطلاب والأدمن
+bot.hears("💬 تواصل مع الإدارة", async (ctx) => {
+  if (ctx.chat.type !== "private") return;
+  
+  const adminIdVal = process.env.ADMIN_ID || "437169371";
+  const contactText = 
+    `📞 **للتواصل مع إدارة المنصة الأكاديمية (تمريض مكثف المنيا):**\n\n` +
+    `للأسئلة، الاستفسارات، الاقتراحات، أو طلب الدعم الفني، يمكنك التواصل مباشرة مع مدير المنصة عبر الضغط على الرابط التالي:\n\n` +
+    `👉 [اضغط هنا لمراسلة الأدمن مباشرة](tg://user?id=${adminIdVal}) 🩺✨`;
+
+  return ctx.reply(contactText, { parse_mode: "Markdown" });
+});
+
+// ➕ معالج الضغط على "➕ إضافة عنصر" من القائمة الرئيسية للأدمن
+bot.hears("➕ إضافة عنصر", async (ctx) => {
+  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  const { setSession } = require("./utils/conversationSessions");
+  setSession(ctx.from.id, {
+    currentFolderId: 'root'
+  });
+  return handleAddClick(ctx);
+});
+
+// 🗑️ معالج الضغط على "🗑️ حذف عنصر" من القائمة الرئيسية للأدمن
+bot.hears("🗑️ حذف عنصر", async (ctx) => {
+  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  const { setSession, getSession } = require("./utils/conversationSessions");
+  
+  // إذا لم يكن لديه جلسة تصفح نشطة، نقوم بتهيئة واحدة في المستوى الرئيسي (root)
+  const session = getSession(ctx.from.id);
+  if (!session || !session.currentFolderId) {
+    setSession(ctx.from.id, {
+      currentFolderId: 'root'
+    });
+  }
+  return handleDeleteClick(ctx);
+});
+
+// ⚙️ معالج الضغط على "⚙️ تعديل ونقل" من القائمة الرئيسية للأدمن
+bot.hears("⚙️ تعديل ونقل", async (ctx) => {
+  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  const { setSession, getSession } = require("./utils/conversationSessions");
+  
+  const session = getSession(ctx.from.id);
+  if (!session || !session.currentFolderId) {
+    setSession(ctx.from.id, {
+      currentFolderId: 'root'
+    });
+  }
+  return handleManageClick(ctx);
+});
+
+
+// 🌳 معالج بدء حل الكويز التفاعلي الشجري للمستخدمين
+bot.action(/^start_quiz_node_(.+)/, async (ctx) => {
+  try {
+    const nodeId = Number(ctx.match[1]);
+    await ctx.answerCbQuery();
+
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+    if (!node) {
+      return ctx.reply('❌ عذراً، لم يتم العثور على هذا الكويز!');
+    }
+
+    const { loadQuizzes } = require("../utils/storage");
+    const quizzes = loadQuizzes();
+    const quizData = quizzes[`node_${node.id}`];
+
+    if (!quizData || !quizData.questions || quizData.questions.length === 0) {
+      return ctx.reply('❌ عذراً، لا توجد أسئلة مسجلة في هذا الكويز حالياً!');
+    }
+
+    await ctx.reply(
+      `🧠 **بدء الكويز التفاعلي الشجري:**\n\n` +
+      `📖 العنوان: [ ${node.name} ]\n` +
+      `🎯 عدد الأسئلة: [ ${quizData.questions.length} سؤال ]\n\n` +
+      `سيتم إرسال الأسئلة إليك تتابقاً بالأسفل. بالتوفيق! 🩺✨`
+    );
+
+    let count = 0;
+    for (let originalQuestion of quizData.questions) {
+      try {
+        const shuffledQ = shuffleQuestion(originalQuestion);
+        const pollMessage = await ctx.telegram.sendPoll(
+          ctx.chat.id,
+          `Q${count + 1}) ${shuffledQ.question}`,
+          shuffledQ.options,
+          { 
+            type: "quiz", 
+            correct_option_id: shuffledQ.correct, 
+            is_anonymous: false
+          }
+        );
+
+        savePoll(pollMessage.poll.id, node.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options);
+        count++;
+        await new Promise((r) => setTimeout(r, 3000));
+      } catch (pe) {
+        console.error(pe);
+      }
+    }
+
+    return ctx.reply(
+      `🏁 **اكتمل إرسال أسئلة كويز:** [ ${node.name} ]\n\n` +
+      `اضغط على الزر بالأسفل لمعرفة تقييم نتيجتك وحساب نقاطك والحصول على الشهادة فوراً! 👇`,
+      {
+        ...Markup.inlineKeyboard([
+          [Markup.button.url("📊 عرض تقرير النتيجة التفصيلي", `t.me/${ctx.botInfo.username}?start=result_${node.name.replace(/\s+/g, '_')}`)]
+        ])
+      }
+    );
+
+  } catch (err) {
+    console.error('❌ Action Quiz Start Error:', err.message);
+  }
+});
+
+// ⚙️ معالجات كولباك تعديل ونقل العناصر للأدمن
+bot.action(/^manage_select_(.+)/, async (ctx) => {
+  const nodeId = ctx.match[1];
+  return handleSelectManageNode(ctx, nodeId);
+});
+
+bot.action(/^manage_rename_(.+)/, async (ctx) => {
+  const nodeId = ctx.match[1];
+  return handleRenameRequest(ctx, nodeId);
+});
+
+bot.action(/^manage_move_(.+)/, async (ctx) => {
+  const nodeId = ctx.match[1];
+  return handleMoveRequest(ctx, nodeId);
+});
+
+bot.action(/^manage_perfmove_(.+)_(.+)/, async (ctx) => {
+  const nodeId = ctx.match[1];
+  const targetFolderId = ctx.match[2];
+  return handlePerformMove(ctx, nodeId, targetFolderId);
+});
+
+bot.action('manage_cancel', async (ctx) => {
+  return handleCancelDelete(ctx);
+});
+
+// 🗑️ معالجات كولباك حذف العناصر للأدمن
+bot.action(/^confirm_del_(.+)/, async (ctx) => {
+  const nodeId = ctx.match[1];
+  return handleConfirmDelete(ctx, nodeId);
+});
+
+bot.action(/^perform_del_(.+)/, async (ctx) => {
+  const nodeId = ctx.match[1];
+  return handlePerformDelete(ctx, nodeId);
+});
+
+bot.action('cancel_del', async (ctx) => {
+  return handleCancelDelete(ctx);
 });
 
 module.exports = bot;

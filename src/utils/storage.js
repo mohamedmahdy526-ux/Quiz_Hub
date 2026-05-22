@@ -35,5 +35,6 @@ function getQuestions(userId) {
 module.exports = {
   saveQuestions,
   getQuestions,
-  loadQuizzes
+  loadQuizzes,
+  saveQuizzes
 };

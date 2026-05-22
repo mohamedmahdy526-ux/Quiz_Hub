@@ -2,64 +2,131 @@ const db = require('../../database/db');
 const { Markup } = require('telegraf');
 
 /**
- * محرك رندرة القوائم الشجرية الموحد (LMS UI Engine)
+ * محرك رندرة القوائم الشجرية التقليدية (Reply Keyboard LMS UI Engine)
  * @param {Object} ctx - الـ Context الخاص بـ Telegraf
  * @param {Number|null} parentId - آيدي العنصر الأب الحالي
- * @param {Boolean} edit - هل نقوم بتحديث نفس الرسالة أم إرسال رسالة جديدة؟
  */
-async function renderMenu(ctx, parentId = null, edit = false) {
+async function renderMenu(ctx, parentId = null, skipAutoSend = false) {
   try {
-    // جلب العناصر المسجلة تحت هذا الأب (باستخدام IS لضمان عمل الـ NULL بالشكل الصحيح في SQLite)
+    const userId = String(ctx.from?.id);
+    const isAdmin = userId === String(process.env.ADMIN_ID);
+
+    // جلب العناصر المسجلة تحت هذا الأب
+    const dbParentId = (parentId === 'root' || parentId === null) ? null : Number(parentId);
+
     const nodes = db.prepare(`
       SELECT * FROM nodes
       WHERE parent_id IS ?
-      ORDER BY id DESC
-    `).all(parentId);
+      ORDER BY id ASC
+    `).all(dbParentId);
 
-    const buttons = [];
+    // فصل المجلدات عن الملفات والوسائط والكويزات
+    const folderNodes = [];
+    const nonFolderNodes = [];
 
-    // 1. توليد أزرار التصفح لكل الـ Nodes الحالية
     for (const node of nodes) {
-      let icon = '📁';
-      if (node.type === 'quiz') icon = '📝';
-      else if (node.type === 'file') icon = '📄';
-      else if (node.type === 'audio') icon = '🎧';
-
-      buttons.push([
-        Markup.button.callback(`${icon} ${node.name}`, `open_${node.id}`)
-      ]);
+      if (node.type === 'folder' || node.type === 'category') {
+        folderNodes.push(node);
+      } else {
+        nonFolderNodes.push(node);
+      }
     }
 
-    // 2. حقن زر الإدارة التفاعلي "➕ إضافة عنصر" تحت العناصر مباشرة
-    buttons.push([
-      Markup.button.callback('➕ إضافة عنصر هنا', `add_${parentId || 'root'}`)
-    ]);
-
-    // 3. حقن زرار الـ "🔙 رجوع" الذكي لو إحنا مش في الـ Root Level
-    if (parentId !== null) {
-      // جلب بيانات النود الحالية لمعرفة الأب الأعلى منها والرجوع إليه
-      const currentNode = db.prepare('SELECT parent_id FROM nodes WHERE id = ?').get(parentId);
-      const grandParentId = currentNode ? currentNode.parent_id : null;
-
-      buttons.push([
-        Markup.button.callback('🔙 رجوع للخلف', `back_${grandParentId || 'root'}`)
-      ]);
+    // 1. إرسال جميع الملفات والوسائط تلقائياً للمستخدم في الشات (إذا لم يتم التخطي)
+    if (!skipAutoSend) {
+      for (const node of nonFolderNodes) {
+        try {
+          if (node.type === 'file') {
+            await ctx.replyWithDocument(node.telegram_file_id, {
+              caption: `📄 **الملف الأكاديمي:**\n📖 [ ${node.name} ]\n\n🏫 تمريض مكثف المنيا ✨`
+            });
+          } else if (node.type === 'audio') {
+            await ctx.replyWithAudio(node.telegram_file_id, {
+              caption: `🎧 **الشرح الصوتي:**\n📖 [ ${node.name} ]\n\n🏫 استماعاً موفقاً! ✨`
+            });
+          } else if (node.type === 'quiz') {
+            await ctx.reply(
+              `🧠 **كويز تفاعلي متاح:**\n` +
+              `📖 العنوان: [ ${node.name} ]\n\n` +
+              `اضغط على الزر بالأسفل لبدء حل هذا الكويز مباشرة! 👇`,
+              Markup.inlineKeyboard([
+                [Markup.button.callback("✍️ ابدأ حل الكويز الآن", `start_quiz_node_${node.id}`)]
+              ])
+            );
+          } else if (node.type === 'photo') {
+            await ctx.replyWithPhoto(node.telegram_file_id, {
+              caption: `🖼️ **صورة توضيحية:**\n📖 [ ${node.name} ]\n\n🏫 تمريض مكثف المنيا ✨`
+            });
+          } else if (node.type === 'text') {
+            await ctx.reply(
+              `✍️ **توجيه/ملاحظة أكاديمية:**\n` +
+              `━━━━━━━━━━━━━━━━━━━━\n` +
+              `${node.name}\n\n` +
+              `🏫 تمريض مكثف المنيا ✨`
+            );
+          }
+          // إراحة خادم تليجرام قليلاً بين الإرسال المتتابع
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        } catch (sendError) {
+          console.error(`❌ Failed auto-sending node #${node.id} (${node.name}):`, sendError.message);
+        }
+      }
     }
+
+    const keyboardRows = [];
+    const nodeButtons = [];
+
+    // 2. توليد أزرار التصفح للمجلدات فقط
+    for (const node of folderNodes) {
+      nodeButtons.push(`📁 ${node.name}`);
+    }
+
+    // تقسيم أزرار المحتوى إلى صفوف متساوية (كل صف به زرين) لتنسيق جمالي مريح بالهاتف
+    for (let i = 0; i < nodeButtons.length; i += 2) {
+      keyboardRows.push(nodeButtons.slice(i, i + 2));
+    }
+
+    // 3. أزرار الإدارة التفاعلية للأدمن فقط (إضافة وحذف في صف واحد لجمال المنظر)
+    if (isAdmin) {
+      keyboardRows.push(['➕ إضافة عنصر هنا', '⚙️ تعديل ونقل', '🗑️ حذف عنصر']);
+    }
+
+    // 4. أزرار الرجوع الذكية في كيبورد الرد التقليدي
+    if (dbParentId !== null) {
+      keyboardRows.push(['🔙 رجوع للخلف']);
+    } else {
+      keyboardRows.push(['🔙 رجوع للقائمة الرئيسية']);
+    }
+
+    // تحديد عنوان المجلد الحالي بشكل ديناميكي أنيق
+    let currentFolderName = 'تمريض مكثف المنيا 🏫';
+    if (dbParentId !== null) {
+      const parentNode = db.prepare('SELECT name FROM nodes WHERE id = ?').get(dbParentId);
+      if (parentNode) {
+        currentFolderName = parentNode.name;
+      }
+    }
+
+    // دالة هروب لرموز HTML لمنع أي توقف في الإرسال
+    const escapeHtml = (text) => {
+      if (!text) return '';
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    };
 
     const text = 
-      `🌳 **متصفح المنصة الجامعية الشجرية**\n` +
+      `🏫 <b>تصفح: [ ${escapeHtml(currentFolderName)} ]</b>\n` +
       `------------------------------------\n` +
-      `استخدم الأزرار الذكية للتنقل لايف جوه الأقسام والمحاضرات 👇`;
+      `استخدم الأزرار بالأسفل للتنقل بين الأقسام والمحاضرات 👇`;
 
-    // 🔄 الـ UI Switch Pattern: تحديث سينمائي لنفس الرسالة منعاً للـ Spam
-    if (edit) {
-      return await ctx.editMessageText(text, {
-        reply_markup: Markup.inlineKeyboard(buttons).reply_markup
-      });
-    }
+    const keyboard = Markup.keyboard(keyboardRows).resize();
 
-    // 📥 أول قذيفة تصفح (رسالة جديدة عند طلب /browse لأول مرة)
-    return await ctx.reply(text, Markup.inlineKeyboard(buttons));
+    return await ctx.reply(text, {
+      reply_markup: keyboard.reply_markup,
+      parse_mode: 'HTML'
+    });
 
   } catch (error) {
     console.error('❌ UI Engine Render Error:', error.message);

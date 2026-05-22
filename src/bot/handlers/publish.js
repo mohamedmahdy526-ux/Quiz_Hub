@@ -93,8 +93,8 @@ async function preparePublishMenu(ctx, groupId) {
     };
 
     return ctx.reply(
-      `📚 اسم المحاضرة: ${lectureName}\n\n` +
-      `✍️ من فضلك اكتب الآن اسم المادة (مثال: Adult Nursing):`,
+      `📚 اسم المادة (من الملف): ${lectureName}\n\n` +
+      `✍️ من فضلك اكتب الآن اسم المحاضرة (مثال: المحاضرة الأولى):`,
       { parse_mode: undefined }
     );
 
@@ -104,7 +104,7 @@ async function preparePublishMenu(ctx, groupId) {
 }
 
 // محرك الضخ الخلفي الفولاذي وتركيب الرسالة الثابتة والمنظمة تلقائياً
-async function startMassPublishing(ctx, userId, subjectName) {
+async function startMassPublishing(ctx, userId, inputtedLectureName) {
   try {
     const sessionData = global.waitingForSubject[userId];
     if (!sessionData) return;
@@ -113,17 +113,42 @@ async function startMassPublishing(ctx, userId, subjectName) {
     
     delete global.waitingForSubject[userId];
 
+    // 🧹 تنظيف كافة الدرجات السابقة المسجلة للطلاب تحت اسم هذه المحاضرة/المادة لبدء كويز جديد ونظيف ومنع تراكم الأسئلة
+    try {
+      const scoresFile = path.join(__dirname, "../../../scores.json");
+      if (fs.existsSync(scoresFile)) {
+        const scores = JSON.parse(fs.readFileSync(scoresFile, "utf8"));
+        const lectureClean = String(lectureName).replace(/_/g, " ").trim();
+        const suffix = `_${lectureClean}`;
+        
+        let countCleared = 0;
+        Object.keys(scores).forEach(key => {
+          if (key.endsWith(suffix) && !key.startsWith("profile_")) {
+            delete scores[key];
+            countCleared++;
+          }
+        });
+        
+        if (countCleared > 0) {
+          fs.writeFileSync(scoresFile, JSON.stringify(scores, null, 2));
+          console.log(`🧹 Done! Cleared previous quiz scores for ${countCleared} students under: "${lectureClean}"`);
+        }
+      }
+    } catch (clearErr) {
+      console.error("❌ Error clearing previous quiz scores during publish:", clearErr.message);
+    }
+
     const groupsObject = loadGroups();
     const target = groupsObject[String(groupId)];
     if (!target) return ctx.reply("❌ الهدف المستهدف لم يعد متاحاً.");
 
-    await ctx.reply(`🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n🎯 عدد الأسئلة: ${questions.length}\n⏳ انتظر حتى اكتمال النشر...`, { parse_mode: undefined });
+    await ctx.reply(`🚀 جاري نشر محاضرة:\n\n📚 ${inputtedLectureName}\n🎯 عدد الأسئلة: ${questions.length}\n⏳ انتظر حتى اكتمال النشر...`, { parse_mode: undefined });
 
     // 🎯 البانر الثابت المنظم المعتمد منك
     const finalIntro = 
       `📚 بداية كويز محاضرة\n` +
-      `🩺 المادة: ${subjectName}\n` +
-      `📖 المحاضرة: ${lectureName}\n` +
+      `🩺 المادة: ${lectureName}\n` +
+      `📖 المحاضرة: ${inputtedLectureName}\n` +
       `📊 نظام الدرجات مفعل\n` +
       `🎲 الـ Shuffle مفعل\n` +
       `🔥 بالتوفيق!`;
@@ -238,4 +263,4 @@ async function startMassPublishing(ctx, userId, subjectName) {
   }
 }
 
-module.exports = { handlePublish, preparePublishMenu, startMassPublishing };
+module.exports = { handlePublish, preparePublishMenu, startMassPublishing, savePoll, shuffleQuestion };

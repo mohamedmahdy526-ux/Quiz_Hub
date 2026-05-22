@@ -1,4 +1,4 @@
-const { renderMenu } = require('../utils/renderMenu');
+const { renderMenu } = require('./renderMenu');
 
 async function handleBrowse(ctx) {
   // استدعاء المنيو الموحد لأول مرة (بدون parentId يعني Root وبدون edit يعني رسالة جديدة)

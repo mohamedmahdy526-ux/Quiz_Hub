@@ -1,90 +1,296 @@
 const db = require('../../database/db');
-const { getSession, clearSession } = require('../../utils/conversationSessions');
+const { getSession, setSession } = require('../../utils/conversationSessions');
 const { parseQuestions } = require('../../engine/parser');
+const { renderMenu } = require('./renderMenu');
+const { loadQuizzes, saveQuizzes } = require('../../utils/storage');
 
+/**
+ * معالج استقبال النصوص والملفات المرفوعة لبناء شجرة الـ LMS
+ */
 async function handleIncomingTextAndFiles(ctx) {
-  // حماية الاستقبال للأدمن فقط لعمليات الـ Stateful Forms
-  if (String(ctx.from.id) !== String(process.env.ADMIN_ID)) return;
+  try {
+    // استقبال العمليات للأدمن فقط
+    if (String(ctx.from.id) !== String(process.env.ADMIN_ID)) return;
 
-  const session = getSession(ctx.from.id);
-  if (!session) return; // مفيش فورم مفتوحة حالياً
+    const session = getSession(ctx.from.id);
+    if (!session) return; // لا توجد جلسة إدخال بيانات مفتوحة حالياً
 
-  // 1. حالة إضافة نود رئيسية (Root Node)
-  if (session.step === 'waiting_root_name') {
-    const name = ctx.message.text.trim();
-    db.prepare("INSERT INTO nodes (name, type, parent_id) VALUES (?, 'category', NULL)").run(name);
-    clearSession(ctx.from.id);
-    return ctx.reply(`✅ تم إنشاء القسم الرئيسي بنجاح: ${name}\nاكتب /browse لرؤيته.`);
-  }
+    // ==========================================
+    // 1. استقبال اسم المجلد الجديد (ترم / مادة / محاضرة)
+    // ==========================================
+    if (session.step === 'waiting_folder_name') {
+      if (!ctx.message.text) {
+        return ctx.reply('❌ خطأ: يرجى إرسال اسم المجلد كرسالة نصية فقط!');
+      }
 
-  // 2. حالة إضافة عنصر فرعي (Child Node)
-  if (session.step === 'waiting_child_name') {
-    const name = ctx.message.text.trim();
-    // تصفير وافتراض أن النوع مادة أو محاضرة حسب العمق
-    db.prepare("INSERT INTO nodes (name, type, parent_id) VALUES (?, 'subject', ?)").run(name, session.parentId);
-    clearSession(ctx.from.id);
-    return ctx.reply(`✅ تم إضافة الكيان الفرعي بنجاح: ${name}`);
-  }
-
-  // 3. حالة رفع ملف (PDF, MP3, PPTX)
-  if (session.step === 'waiting_file' && ctx.message.document) {
-    const file = ctx.message.document;
-    let type = file.file_name.endsWith('.mp3') || file.file_name.endsWith('.wav') ? 'audio' : 'file';
-
-    db.prepare("INSERT INTO nodes (name, type, parent_id, telegram_file_id) VALUES (?, ?, ?, ?)")
-      .run(file.file_name, type, session.parentId, file.file_id);
-    
-    clearSession(ctx.from.id);
-    return ctx.reply(`✅ تم استقبال وربط ملف المحاضرة بنجاح الشجرة: ${file.file_name}`);
-  }
-
-  // 4. حالة رفع كويز وفكه شجرياً وضخه تلقائياً في الجروب
-  if (session.step === 'waiting_quiz' && ctx.message.document) {
-    const file = ctx.message.document;
-    if (!file.file_name.endsWith('.txt')) return ctx.reply('❌ يرجى رفع ملف أسئلة بصيغة .txt فقط.');
-
-    try {
-      const fileLink = await ctx.telegram.getFileLink(file.file_id);
-      const response = await fetch(fileLink.href);
-      const text = await response.text();
-      const questions = parseQuestions(text);
-
-      if (!questions || questions.length === 0) return ctx.reply('❌ فشل تفكيك الأسئلة، تأكد من صياغة الملف.');
-
-      // إنشاء نود للكويز
-      const result = db.prepare("INSERT INTO nodes (name, type, parent_id) VALUES (?, 'quiz', ?)")
-        .run(file.file_name, session.parentId);
+      const name = ctx.message.text.trim();
       
-      clearSession(ctx.from.id);
-      ctx.reply(`🎉 تم استخراج ${questions.length} سؤال وربط كويز شجري بنجاح!\nجاري بدء النشر الآمن في الخلفية... 🚀`);
+      db.prepare(`
+        INSERT INTO nodes (name, type, parent_id)
+        VALUES (?, 'folder', ?)
+      `).run(name, session.parentId);
 
-      // تشغيل الـ Async Background Builder المريح لـ تليجرام ⚡
-      setImmediate(async () => {
-        let sent = 0;
-        for (const [index, question] of questions.entries()) {
-          try {
-            if (question.options.length > 10 || question.question.length > 300) continue;
-
-            const sentPoll = await ctx.telegram.sendPoll(ctx.chat.id, question.question, question.options, {
-              type: 'quiz',
-              correct_option_id: question.correct,
-              is_anonymous: false
-            });
-
-            // تخزين الـ mapping الخاص بالـ Poll ID مع الإجابة الصح شجرياً
-            db.prepare("INSERT INTO polls (poll_id, correct_option) VALUES (?, ?)").run(sentPoll.poll.id, question.correct);
-            sent++;
-            await new Promise(res => setTimeout(res, 5000)); // ديليه الأمان النظيف
-          } catch (err) {
-            console.error(`Error sending text-quiz-node item ${index}:`, err.message);
-          }
-        }
-        await ctx.reply(`🏁 اكتمل ضخ أسئلة كويز الـ Node بنجاح. تم إرسال ${sent} سؤال.`);
+      const currentFolderId = session.currentFolderId;
+      
+      // استعادة وضع التصفح وحفظ المجلد الحالي
+      setSession(ctx.from.id, {
+        currentFolderId: currentFolderId
       });
 
-    } catch (err) {
-      ctx.reply('❌ حدث خطأ أثناء معالجة الكويز.');
+      await ctx.reply(`✅ تم إنشاء المجلد بنجاح:\n📁 **${name}**`);
+      
+      // تحديث وعرض القائمة الحالية مباشرة أمام الأدمن
+      return renderMenu(ctx, currentFolderId, true);
     }
+
+    // ==========================================
+    // 2. استقبال ملفات الـ PDF / الملخصات (دعم الرفع المتعدد)
+    // ==========================================
+    if (session.step === 'waiting_file') {
+      const file = ctx.message.document;
+      if (!file) {
+        return ctx.reply('❌ خطأ: يرجى إرسال الملف المطلوب كـ Document (PDF, PPTX, Word...)!');
+      }
+
+      db.prepare(`
+        INSERT INTO nodes (name, type, parent_id, telegram_file_id)
+        VALUES (?, 'file', ?, ?)
+      `).run(file.file_name, session.parentId, file.file_id);
+
+      await ctx.reply(
+        `✅ تم رفع وربط الملف الأكاديمي بنجاح:\n📄 **${file.file_name}**\n\n` +
+        `📥 يمكنك إرسال المزيد من الملفات الآن بشكل متتابع، أو اضغط على الزر بالأسفل للإنهاء 👇`
+      );
+      return;
+    }
+
+    // ==========================================
+    // 3. استقبال المقاطع الصوتية / الشروحات (دعم الرفع المتعدد)
+    // ==========================================
+    if (session.step === 'waiting_audio') {
+      const audio = ctx.message.audio || ctx.message.voice || ctx.message.document;
+      if (!audio) {
+        return ctx.reply('❌ خطأ: يرجى إرسال ملف صوتي أو تسجيل صوتي (MP3, Voice, Document)!');
+      }
+
+      const audioName = audio.file_name || audio.title || `شرح صوتي - ${new Date().toLocaleDateString('ar-EG')}`;
+
+      db.prepare(`
+        INSERT INTO nodes (name, type, parent_id, telegram_file_id)
+        VALUES (?, 'audio', ?, ?)
+      `).run(audioName, session.parentId, audio.file_id);
+
+      await ctx.reply(
+        `✅ تم رفع وربط الشرح الصوتي بنجاح:\n🎧 **${audioName}**\n\n` +
+        `📥 يمكنك إرسال المزيد من الصوتيات الآن بشكل متتابع، أو اضغط على الزر بالأسفل للإنهاء 👇`
+      );
+      return;
+    }
+
+    // ==========================================
+    // 4. استقبال ملف أسئلة الكويز (.txt)
+    // ==========================================
+    if (session.step === 'waiting_quiz') {
+      const file = ctx.message.document;
+      if (!file || !file.file_name.endsWith('.txt')) {
+        return ctx.reply('❌ يرجى رفع ملف أسئلة بصيغة \`.txt\` المعتمدة فقط.');
+      }
+
+      try {
+        await ctx.reply('⏳ جاري تحميل وفك تشفير الأسئلة... انتظر ثوانٍ معدودة.');
+        
+        const fileLink = await ctx.telegram.getFileLink(file.file_id);
+        const response = await fetch(fileLink.href);
+        const text = await response.text();
+        
+        // تفكيك بنك الأسئلة من النص
+        const questions = parseQuestions(text);
+
+        if (!questions || questions.length === 0) {
+          return ctx.reply('❌ فشل تفكيك الأسئلة. تأكد أن صياغة الملف تطابق التنسيق المطلوب (سؤال ثم الخيارات A, B, C ثم Answer: ).');
+        }
+
+        const quizTitle = file.file_name.replace('.txt', '').replace(/- Copy(\s*\(\d+\))?/gi, '').trim();
+
+        // 1. إنشاء نود الكويز في شجرة المنصة
+        const result = db.prepare(`
+          INSERT INTO nodes (name, type, parent_id)
+          VALUES (?, 'quiz', ?)
+        `).run(quizTitle, session.parentId);
+
+        const quizNodeId = result.lastInsertRowid;
+
+        // 2. حفظ الأسئلة في ملف quizzes.json تحت معرف النود الفريد ليتسنى للطلاب حلها لاحقاً
+        const quizzes = loadQuizzes();
+        quizzes[`node_${quizNodeId}`] = {
+          lectureName: quizTitle,
+          questions: questions
+        };
+        saveQuizzes(quizzes);
+
+        const currentFolderId = session.currentFolderId;
+        
+        // استعادة وضع التصفح وحفظ المجلد الحالي
+        setSession(ctx.from.id, {
+          currentFolderId: currentFolderId
+        });
+
+        await ctx.reply(
+          `🎉 **تم إنشاء وتوليد الكويز بنجاح!**\n\n` +
+          `📝 العنوان: [ ${quizTitle} ]\n` +
+          `📊 إجمالي الأسئلة المستخرجة: [ ${questions.length} سؤال ]\n\n` +
+          `تم حفظ الكويز في شجرة المواد بنجاح ويمكن للطلاب حله مباشرة داخل البوت الآن! 🧠✨`
+        );
+
+        return renderMenu(ctx, currentFolderId, true);
+
+      } catch (err) {
+        console.error('❌ Error parsing quiz in node:', err.message);
+        ctx.reply('❌ حدث خطأ غير متوقع أثناء معالجة وحفظ الكويز.');
+      }
+    }
+
+    // ==========================================
+    // 5. استقبال الصور والمخططات الطبية (دعم الرفع المتعدد)
+    // ==========================================
+    if (session.step === 'waiting_photo') {
+      const photoArray = ctx.message.photo;
+      const doc = ctx.message.document;
+      
+      let fileId = null;
+      let fileName = `مخطط توضيحي - ${new Date().toLocaleDateString('ar-EG')}`;
+
+      if (photoArray && photoArray.length > 0) {
+        fileId = photoArray[photoArray.length - 1].file_id;
+      } else if (doc && doc.mime_type && doc.mime_type.startsWith('image/')) {
+        fileId = doc.file_id;
+        fileName = doc.file_name;
+      }
+
+      if (!fileId) {
+        return ctx.reply('❌ خطأ: يرجى إرسال ملف الصورة المطلوب كصورة (Photo) أو مستند صورة!');
+      }
+
+      db.prepare(`
+        INSERT INTO nodes (name, type, parent_id, telegram_file_id)
+        VALUES (?, 'photo', ?, ?)
+      `).run(fileName, session.parentId, fileId);
+
+      await ctx.reply(
+        `✅ تم رفع وربط الصورة التوضيحية بنجاح:\n🖼️ **${fileName}**\n\n` +
+        `📥 يمكنك إرسال المزيد من الصور الآن بشكل متتابع، أو اضغط على الزر بالأسفل للإنهاء 👇`
+      );
+      return;
+    }
+
+    // ==========================================
+    // 6. استقبال رسالة نصية أو توجيه أكاديمي
+    // ==========================================
+    if (session.step === 'waiting_text_message') {
+      if (!ctx.message.text) {
+        return ctx.reply('❌ خطأ: يرجى إرسال الرسالة كنص فقط!');
+      }
+
+      const textMsg = ctx.message.text.trim();
+
+      db.prepare(`
+        INSERT INTO nodes (name, type, parent_id)
+        VALUES (?, 'text', ?)
+      `).run(textMsg, session.parentId);
+
+      const currentFolderId = session.currentFolderId;
+
+      // استعادة وضع التصفح وحفظ المجلد الحالي
+      setSession(ctx.from.id, {
+        currentFolderId: currentFolderId
+      });
+
+      await ctx.reply(
+        `✅ تم حفظ الرسالة النصية بنجاح:\n\n` +
+        `✍️ **محتوى الرسالة:**\n` +
+        `"${textMsg}"`
+      );
+
+      return renderMenu(ctx, currentFolderId, true);
+    }
+
+    // ==========================================
+    // 7. استقبال الاسم الجديد لإعادة تسمية العنصر
+    // ==========================================
+    if (session.step === 'waiting_rename_name') {
+      if (!ctx.message.text) {
+        return ctx.reply('❌ خطأ: يرجى إرسال الاسم الجديد كرسالة نصية فقط!');
+      }
+
+      const newName = ctx.message.text.trim();
+      const targetNodeId = session.targetNodeId;
+
+      const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(targetNodeId);
+      if (!node) {
+        setSession(ctx.from.id, { currentFolderId: session.currentFolderId });
+        await ctx.reply('❌ خطأ: لم يتم العثور على العنصر المراد تعديل اسمه!');
+        return renderMenu(ctx, session.currentFolderId, true);
+      }
+
+      // تحديث قاعدة البيانات
+      db.prepare('UPDATE nodes SET name = ? WHERE id = ?').run(newName, targetNodeId);
+
+      // إذا كان كويز، تحديث الاسم في ملف quizzes.json ومهاجرة نتائج الطلاب السابقة في scores.json
+      if (node.type === 'quiz') {
+        try {
+          const quizzes = loadQuizzes();
+          if (quizzes[`node_${targetNodeId}`]) {
+            quizzes[`node_${targetNodeId}`].lectureName = newName;
+            saveQuizzes(quizzes);
+          }
+        } catch (quizErr) {
+          console.error('❌ Error updating quiz name in JSON:', quizErr.message);
+        }
+
+        try {
+          const fs = require('fs');
+          const path = require('path');
+          const scoresFile = path.join(__dirname, '../../../scores.json');
+          if (fs.existsSync(scoresFile)) {
+            const scores = JSON.parse(fs.readFileSync(scoresFile, 'utf8'));
+            let scoresUpdated = false;
+
+            const oldSuffix = `_${node.name}`;
+            const newSuffix = `_${newName}`;
+
+            for (const key of Object.keys(scores)) {
+              if (key.endsWith(oldSuffix) && !key.startsWith('profile_')) {
+                const userId = key.substring(0, key.length - oldSuffix.length);
+                const newKey = `${userId}${newSuffix}`;
+                
+                scores[newKey] = scores[key];
+                delete scores[key];
+                scoresUpdated = true;
+              }
+            }
+
+            if (scoresUpdated) {
+              fs.writeFileSync(scoresFile, JSON.stringify(scores, null, 2));
+              console.log(`✔ Migrated quiz scores in scores.json from "${node.name}" to "${newName}"`);
+            }
+          }
+        } catch (scoresErr) {
+          console.error('❌ Error migrating quiz scores on rename:', scoresErr.message);
+        }
+      }
+
+      const currentFolderId = session.currentFolderId;
+      setSession(ctx.from.id, {
+        currentFolderId: currentFolderId
+      });
+
+      await ctx.reply(`✅ تم تعديل الاسم بنجاح إلى:\n✨ **${newName}**`);
+      return renderMenu(ctx, currentFolderId, true);
+    }
+
+  } catch (error) {
+    console.error('❌ Error in handleIncomingTextAndFiles:', error.message);
+    ctx.reply('❌ حدث خطأ غير متوقع أثناء استقبال ومعالجة البيانات.');
   }
 }
 
