@@ -676,8 +676,8 @@ bot.command("menu", async (ctx) => {
   });
 });
 
-// 👤 معالج الضغط على "👤 ملفي الأكاديمي"
-bot.hears("👤 ملفي الأكاديمي", async (ctx) => {
+// 👤 معالج ملفي الأكاديمي
+async function handleProfile(ctx) {
   if (ctx.chat.type !== "private") return;
   const userId = String(ctx.from.id);
   const scores = loadData(scoresFile);
@@ -724,10 +724,10 @@ bot.hears("👤 ملفي الأكاديمي", async (ctx) => {
     `🏥 *دمتم عوناً وسنداً للمرضى ورعاة للإنسانية!* ✨`;
 
   return ctx.reply(profileText, { parse_mode: "Markdown" });
-});
+}
 
-// 🏆 معالج الضغط على "🏆 لوحة الشرف"
-bot.hears("🏆 لوحة الشرف", async (ctx) => {
+// 🏆 معالج لوحة الشرف
+async function handleLeaderboard(ctx) {
   if (ctx.chat.type !== "private") return;
   const scores = loadData(scoresFile);
   
@@ -764,10 +764,10 @@ bot.hears("🏆 لوحة الشرف", async (ctx) => {
                      `💡 _اجتهد في الكويزات القادمة لتسجيل اسمك في لوحة المتفوقين!_ 🩺✨`;
 
   return ctx.reply(leaderboardText, { parse_mode: "Markdown" });
-});
+}
 
-// 📜 معالج الضغط على "📜 شهاداتي ونتائجي"
-bot.hears("📜 شهاداتي ونتائجي", async (ctx) => {
+// 📜 معالج شهاداتي ونتائجي
+async function handleCertificates(ctx) {
   if (ctx.chat.type !== "private") return;
   const userId = String(ctx.from.id);
   const scores = loadData(scoresFile);
@@ -821,7 +821,7 @@ bot.hears("📜 شهاداتي ونتائجي", async (ctx) => {
   } else {
     return ctx.reply(text, { parse_mode: "Markdown" });
   }
-});
+}
 
 // 📜 معالج استرداد الشهادة الفردية عبر الأزرار التفاعلية
 bot.action(/^cert_(.+)/, async (ctx) => {
@@ -852,8 +852,8 @@ bot.action(/^cert_(.+)/, async (ctx) => {
   }
 });
 
-// 🧠 معالج الضغط على "🧠 شرح أخطائي"
-bot.hears("🧠 شرح أخطائي", async (ctx) => {
+// 🧠 معالج شرح أخطائي
+async function handleExplainErrors(ctx) {
   if (ctx.chat.type !== "private") return;
   const userId = String(ctx.from.id);
   const scores = loadData(scoresFile);
@@ -884,10 +884,10 @@ bot.hears("🧠 شرح أخطائي", async (ctx) => {
     parse_mode: "Markdown",
     ...Markup.inlineKeyboard(inlineButtons)
   });
-});
+}
 
-// ℹ️ معالج الضغط على "ℹ️ مساعدة وتوجيه"
-bot.hears("ℹ️ مساعدة وتوجيه", async (ctx) => {
+// ℹ️ معالج مساعدة وتوجيه
+async function handleHelp(ctx) {
   if (ctx.chat.type !== "private") return;
   
   const helpText = 
@@ -906,10 +906,10 @@ bot.hears("ℹ️ مساعدة وتوجيه", async (ctx) => {
     `🏥 *نتمنى لكم مسيرة علمية سريرية مليئة بالتميز!* ✨`;
 
   return ctx.reply(helpText, { parse_mode: "Markdown" });
-});
+}
 
-// 💬 معالج الضغط على "💬 تواصل مع الإدارة" للطلاب والأدمن
-bot.hears("💬 تواصل مع الإدارة", async (ctx) => {
+// 💬 معالج تواصل مع الإدارة
+async function handleContactAdmin(ctx) {
   if (ctx.chat.type !== "private") return;
   
   const adminIdVal = process.env.ADMIN_ID || "437169371";
@@ -919,7 +919,31 @@ bot.hears("💬 تواصل مع الإدارة", async (ctx) => {
     `👉 [اضغط هنا لمراسلة الأدمن مباشرة](tg://user?id=${adminIdVal}) 🩺✨`;
 
   return ctx.reply(contactText, { parse_mode: "Markdown" });
-});
+}
+
+// 👤 ربط معالج "ملفي الأكاديمي"
+bot.hears("👤 ملفي الأكاديمي", handleProfile);
+bot.command("profile", handleProfile);
+
+// 🏆 ربط معالج "لوحة الشرف"
+bot.hears("🏆 لوحة الشرف", handleLeaderboard);
+bot.command("leaderboard", handleLeaderboard);
+
+// 📜 ربط معالج "شهاداتي ونتائجي"
+bot.hears("📜 شهاداتي ونتائجي", handleCertificates);
+bot.command("certificates", handleCertificates);
+
+// 🧠 ربط معالج "شرح أخطائي"
+bot.hears("🧠 شرح أخطائي", handleExplainErrors);
+bot.command("explain", handleExplainErrors);
+
+// ℹ️ ربط معالج "مساعدة وتوجيه"
+bot.hears("ℹ️ مساعدة وتوجيه", handleHelp);
+bot.command("help", handleHelp);
+
+// 💬 ربط معالج "تواصل مع الإدارة"
+bot.hears("💬 تواصل مع الإدارة", handleContactAdmin);
+bot.command("contact", handleContactAdmin);
 
 // ➕ معالج الضغط على "➕ إضافة عنصر" من القائمة الرئيسية للأدمن
 bot.hears("➕ إضافة عنصر", async (ctx) => {

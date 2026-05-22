@@ -8,6 +8,34 @@ const commands = [
     description: '📱 فتح القائمة الرئيسية التفاعلية'
   },
   {
+    command: 'browse',
+    description: '📂 تصفح المجلدات والمحاضرات الأكاديمية'
+  },
+  {
+    command: 'profile',
+    description: '👤 عرض ملفي الأكاديمي وإحصائياتي'
+  },
+  {
+    command: 'leaderboard',
+    description: '🏆 لوحة الشرف لأفضل طلاب التمريض'
+  },
+  {
+    command: 'certificates',
+    description: '📜 شهاداتي ونتائج الكويزات السابقة'
+  },
+  {
+    command: 'explain',
+    description: '🧠 شرح أخطائي الطبية بالذكاء الاصطناعي'
+  },
+  {
+    command: 'help',
+    description: 'ℹ️ مساعدة وتوجيهات استخدام المنصة'
+  },
+  {
+    command: 'contact',
+    description: '💬 تواصل مع إدارة المنصة مباشرة'
+  },
+  {
     command: 'publish',
     description: '🔐 (للإدارة) نشر أسئلة الكويز المرفوع'
   }
