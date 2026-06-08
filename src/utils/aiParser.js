@@ -6,12 +6,15 @@ const mammoth = require("mammoth");
  * دالة استدعاء Gemini API بشكل آمن ومباشر
  */
 function callGeminiAPI(apiKey, prompt) {
-  const models = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
+  const attempts = [
+    { model: "gemini-2.0-flash", apiVersion: "v1beta" },
+    { model: "gemini-1.5-flash", apiVersion: "v1beta" },
+    { model: "gemini-1.5-flash", apiVersion: "v1" },
+    { model: "gemini-2.5-flash", apiVersion: "v1beta" },
+    { model: "gemini-1.5-pro", apiVersion: "v1beta" }
   ];
 
-  const makeRequest = (modelName) => {
+  const makeRequest = (modelName, apiVersion) => {
     return new Promise((resolve, reject) => {
       const data = JSON.stringify({
         contents: [
@@ -29,7 +32,7 @@ function callGeminiAPI(apiKey, prompt) {
       const options = {
         hostname: 'generativelanguage.googleapis.com',
         port: 443,
-        path: `/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+        path: `/${apiVersion}/models/${modelName}:generateContent?key=${apiKey}`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -49,7 +52,7 @@ function callGeminiAPI(apiKey, prompt) {
               reject(new Error(body));
             }
           } catch (e) {
-            reject(e);
+            reject(new Error(`HTTP ${res.statusCode}: ${body}`));
           }
         });
       });
@@ -61,16 +64,25 @@ function callGeminiAPI(apiKey, prompt) {
   };
 
   return new Promise(async (resolve, reject) => {
-    let lastError = null;
-    for (const model of models) {
+    const errors = [];
+    for (const attempt of attempts) {
       try {
-        const result = await makeRequest(model);
+        console.log(`🧠 Trying Gemini API with model ${attempt.model} (${attempt.apiVersion})...`);
+        const result = await makeRequest(attempt.model, attempt.apiVersion);
         return resolve(result);
       } catch (err) {
-        lastError = err;
+        let errMsg = err.message;
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed && parsed.error && parsed.error.message) {
+            errMsg = parsed.error.message;
+          }
+        } catch (e) {}
+        console.error(`❌ Model ${attempt.model} (${attempt.apiVersion}) failed: ${errMsg}`);
+        errors.push(`${attempt.model} (${attempt.apiVersion}): ${errMsg}`);
       }
     }
-    reject(lastError || new Error("Failed to contact any Gemini models"));
+    reject(new Error("فشلت محاولات الاتصال بكافة نماذج Gemini:\n" + errors.map((e, idx) => `${idx + 1}. ${e}`).join("\n")));
   });
 }
 
