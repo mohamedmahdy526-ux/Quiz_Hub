@@ -16,18 +16,23 @@ function callGeminiAPI(apiKey, prompt) {
 
   const makeRequest = (modelName, apiVersion) => {
     return new Promise((resolve, reject) => {
-      const data = JSON.stringify({
+      const payload = {
         contents: [
           {
             parts: [
               { text: prompt }
             ]
           }
-        ],
-        generationConfig: {
+        ]
+      };
+
+      if (apiVersion === "v1beta") {
+        payload.generationConfig = {
           responseMimeType: "application/json"
-        }
-      });
+        };
+      }
+
+      const data = JSON.stringify(payload);
 
       const options = {
         hostname: 'generativelanguage.googleapis.com',
@@ -167,7 +172,13 @@ ${rawText}
 
   try {
     const aiResponse = await callGeminiAPI(apiKey, prompt);
-    const cleanedJson = aiResponse.trim();
+    let cleanedJson = aiResponse.trim();
+    
+    // إزالة علامات الاقتباس البرمجية إذا قام الموديل بإرجاع النص مغلفاً بها (Markdown code blocks)
+    if (cleanedJson.startsWith("```")) {
+      cleanedJson = cleanedJson.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
+    }
+    
     const questions = JSON.parse(cleanedJson);
 
     if (!Array.isArray(questions)) {
