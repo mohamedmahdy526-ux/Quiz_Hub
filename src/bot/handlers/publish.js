@@ -93,8 +93,8 @@ async function preparePublishMenu(ctx, groupId) {
     };
 
     return ctx.reply(
-      `📚 اسم المادة (من الملف): ${lectureName}\n\n` +
-      `✍️ من فضلك اكتب الآن اسم المحاضرة (مثال: المحاضرة الأولى):`,
+      `📚 اسم المحاضرة (من الملف): ${lectureName}\n\n` +
+      `✍️ من فضلك اكتب الآن اسم المادة (مثال: Adult Nursing):`,
       { parse_mode: undefined }
     );
 
@@ -104,7 +104,7 @@ async function preparePublishMenu(ctx, groupId) {
 }
 
 // محرك الضخ الخلفي الفولاذي وتركيب الرسالة الثابتة والمنظمة تلقائياً
-async function startMassPublishing(ctx, userId, inputtedLectureName) {
+async function startMassPublishing(ctx, userId, inputtedSubjectName) {
   try {
     const sessionData = global.waitingForSubject[userId];
     if (!sessionData) return;
@@ -142,13 +142,13 @@ async function startMassPublishing(ctx, userId, inputtedLectureName) {
     const target = groupsObject[String(groupId)];
     if (!target) return ctx.reply("❌ الهدف المستهدف لم يعد متاحاً.");
 
-    await ctx.reply(`🚀 جاري نشر محاضرة:\n\n📚 ${inputtedLectureName}\n🎯 عدد الأسئلة: ${questions.length}\n⏳ انتظر حتى اكتمال النشر...`, { parse_mode: undefined });
+    await ctx.reply(`🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n🎯 عدد الأسئلة: ${questions.length}\n⏳ انتظر حتى اكتمال النشر...`, { parse_mode: undefined });
 
     // 🎯 البانر الثابت المنظم المعتمد منك
     const finalIntro = 
       `📚 بداية كويز محاضرة\n` +
-      `🩺 المادة: ${lectureName}\n` +
-      `📖 المحاضرة: ${inputtedLectureName}\n` +
+      `🩺 المادة: ${inputtedSubjectName}\n` +
+      `📖 المحاضرة: ${lectureName}\n` +
       `📊 نظام الدرجات مفعل\n` +
       `🎲 الـ Shuffle مفعل\n` +
       `🔥 بالتوفيق!`;
