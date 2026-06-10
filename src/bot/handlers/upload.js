@@ -17,7 +17,20 @@ async function handleUpload(ctx) {
     // جلب الرابط المباشر من سيرفرات تليجرام وقراءته فوراً كـ Text
     const fileLink = await ctx.telegram.getFileLink(fileId);
     const response = await fetch(fileLink.href);
-    let textContent = await response.text();
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    let textContent;
+    if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+      textContent = new TextDecoder('utf-16le').decode(buffer.subarray(2));
+    } else if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+      textContent = new TextDecoder('utf-16be').decode(buffer.subarray(2));
+    } else {
+      try {
+        textContent = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+      } catch (e) {
+        textContent = new TextDecoder('windows-1256').decode(buffer);
+      }
+    }
 
     // 🎯 الـ Auto Formatter: تطهير وتصليح صيغة الملف تلقائياً قبل الـ Parsing
     textContent = cleanText(textContent);

@@ -101,7 +101,20 @@ async function handleIncomingTextAndFiles(ctx) {
         
         const fileLink = await ctx.telegram.getFileLink(file.file_id);
         const response = await fetch(fileLink.href);
-        const text = await response.text();
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        let text;
+        if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+          text = new TextDecoder('utf-16le').decode(buffer.subarray(2));
+        } else if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+          text = new TextDecoder('utf-16be').decode(buffer.subarray(2));
+        } else {
+          try {
+            text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+          } catch (e) {
+            text = new TextDecoder('windows-1256').decode(buffer);
+          }
+        }
         
         // تفكيك بنك الأسئلة من النص
         const questions = parseQuestions(text);
