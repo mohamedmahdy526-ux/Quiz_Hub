@@ -13,7 +13,7 @@ const { handleIncomingTextAndFiles } = require("./handlers/textReceiver");
 const { handleAddClick, handleSelectType, handleCancelAdd, handleDeleteClick, handleConfirmDelete, handlePerformDelete, handleCancelDelete, handleManageClick, handleSelectManageNode, handleRenameRequest, handleMoveRequest, handlePerformMove } = require("./handlers/adminActions");
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const adminId = process.env.ADMIN_ID;
+const adminId = process.env.ADMIN_ID || "437169371";
 
 const groupsFile = path.join(__dirname, "../../groups.json");
 const pollsFile = path.join(__dirname, "../../polls.json");
