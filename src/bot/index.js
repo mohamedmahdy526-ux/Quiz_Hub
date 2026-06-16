@@ -660,7 +660,7 @@ bot.action("manage_pub_add", async (ctx) => {
     if (String(ctx.from.id) !== String(adminId)) return ctx.answerCbQuery();
     await ctx.answerCbQuery();
     
-    const { setSession } = require("./utils/conversationSessions");
+    const { setSession } = require("../utils/conversationSessions");
     setSession(ctx.from.id, { step: 'waiting_publisher_id' });
     
     return ctx.reply(
