@@ -45,7 +45,7 @@ function getMainMenuKeyboard(userId) {
     return Markup.keyboard([
       ["📂 تمريض مكثف المنيا"],
       ["➕ إضافة عنصر", "⚙️ تعديل ونقل", "🗑️ حذف عنصر"],
-      ["📝 إنشاء ونشر كويز"],
+      ["📝 إنشاء ونشر كويز", "👥 إدارة الناشرين"],
       ["👤 ملفي الأكاديمي", "🏆 لوحة الشرف"],
       ["📜 شهاداتي ونتائجي", "🧠 شرح أخطائي"],
       ["ℹ️ مساعدة وتوجيه", "💬 تواصل مع الإدارة"]
@@ -121,6 +121,45 @@ bot.on("message", async (ctx, next) => {
 
       if (session) {
         const text = ctx.message.text ? ctx.message.text.trim() : "";
+
+        // حارس انتظار آيدي الناشر المراد إضافته
+        if (session.step === 'waiting_publisher_id' && String(userId) === String(adminId)) {
+          if (text === "❌ إلغاء العملية") {
+            clearSession(userId);
+            return ctx.reply("❌ تم إلغاء العملية.", getMainMenuKeyboard(userId));
+          }
+          
+          const targetUserId = text;
+          if (!targetUserId || isNaN(targetUserId)) {
+            return ctx.reply("❌ من فضلك أرسل آيدي رقمي صحيح (أرقام فقط)، أو اضغط على إلغاء بالأسفل:");
+          }
+
+          if (String(targetUserId) === String(adminId)) {
+            clearSession(userId);
+            return ctx.reply("ℹ️ هذا الآيدي هو آيدي الأدمن الأساسي للبوت بالفعل.", getMainMenuKeyboard(userId));
+          }
+
+          let targetUsername = `آيدي: ${targetUserId}`;
+          try {
+            const chatInfo = await ctx.telegram.getChat(targetUserId);
+            targetUsername = chatInfo.username ? `@${chatInfo.username}` : `${chatInfo.first_name || ""} ${chatInfo.last_name || ""}`.trim() || targetUsername;
+          } catch (e) {
+            console.log("Could not get chat info for user:", targetUserId);
+          }
+
+          const publishers = loadData(publishersFile);
+          publishers[targetUserId] = { 
+            username: targetUsername, 
+            addedAt: new Date().toISOString() 
+          };
+          saveData(publishersFile, publishers);
+          clearSession(userId);
+
+          return ctx.reply(`✅ تم إضافة **${targetUsername}** كـ ناشر معتمد بنجاح!`, { 
+            parse_mode: "Markdown",
+            ...getMainMenuKeyboard(userId) 
+          });
+        }
 
         // أ) إذا كان الأدمن في إحدى خطوات الرفع وكان يكبس إلغاء أو إنهاء
         if ((text === "❌ إلغاء العملية" || text === "❌ إنهاء والعودة للتصفح") && String(userId) === String(adminId)) {
@@ -596,6 +635,147 @@ bot.command("publishers", async (ctx) => {
   } catch (err) {
     console.error("❌ List Publishers Error:", err.message);
     return ctx.reply("❌ حدث خطأ أثناء جلب قائمة الناشرين.");
+  }
+});
+
+// 👥 معالج الضغط على "👥 إدارة الناشرين" من القائمة الرئيسية للأدمن
+bot.hears("👥 إدارة الناشرين", async (ctx) => {
+  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  
+  const buttons = [
+    [Markup.button.callback("➕ إضافة ناشر جديد", "manage_pub_add")],
+    [Markup.button.callback("📋 عرض الناشرين الحاليين", "manage_pub_list")],
+    [Markup.button.callback("🗑️ إزالة ناشر معتمد", "manage_pub_remove_list")]
+  ];
+  return ctx.reply(
+    "👥 **بوابة إدارة الناشرين المعتمدين**\n\n" +
+    "يمكنك إضافة أو حذف أو استعراض الأشخاص المصرح لهم بنشر الكويزات.", 
+    Markup.inlineKeyboard(buttons)
+  );
+});
+
+// ⚙️ معالجات كولباك إدارة الناشرين
+bot.action("manage_pub_add", async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(adminId)) return ctx.answerCbQuery();
+    await ctx.answerCbQuery();
+    
+    const { setSession } = require("./utils/conversationSessions");
+    setSession(ctx.from.id, { step: 'waiting_publisher_id' });
+    
+    return ctx.reply(
+      "✍️ **من فضلك أرسل الآن آيدي (ID) الشخص المراد إضافته كـ ناشر معتمد:**\n\n" +
+      "يمكنك الحصول على الآيدي عن طريق تواصل الشخص مع بوتات كشف الآيدي مثل @userinfobot وإرساله لك.",
+      {
+        parse_mode: "Markdown",
+        ...Markup.keyboard([["❌ إلغاء العملية"]]).resize()
+      }
+    );
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+bot.action("manage_pub_list", async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(adminId)) return ctx.answerCbQuery();
+    await ctx.answerCbQuery();
+
+    const publishers = loadData(publishersFile);
+    const keys = Object.keys(publishers);
+    if (!keys.length) {
+      return ctx.reply("📋 لا يوجد أي ناشرين معتمدين مضافين حالياً.");
+    }
+
+    let msg = "📋 **قائمة الناشرين المعتمدين:**\n\n";
+    keys.forEach((key, index) => {
+      const pub = publishers[key];
+      msg += `${index + 1}. ${pub.username} (ID: \`${key}\`)\n`;
+    });
+    
+    const buttons = [
+      [Markup.button.callback("➕ إضافة ناشر", "manage_pub_add")],
+      [Markup.button.callback("🗑️ إزالة ناشر", "manage_pub_remove_list")]
+    ];
+    return ctx.reply(msg, { 
+      parse_mode: "Markdown", 
+      ...Markup.inlineKeyboard(buttons) 
+    });
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+bot.action("manage_pub_remove_list", async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(adminId)) return ctx.answerCbQuery();
+    await ctx.answerCbQuery();
+
+    const publishers = loadData(publishersFile);
+    const keys = Object.keys(publishers);
+    if (!keys.length) {
+      return ctx.reply("📋 لا يوجد أي ناشرين معتمدين لإزالتهم حالياً.");
+    }
+
+    const buttons = keys.map(key => {
+      const pub = publishers[key];
+      return [Markup.button.callback(`🗑️ إزالة: ${pub.username}`, `del_pub_${key}`)];
+    });
+    
+    buttons.push([Markup.button.callback("🔙 رجوع لإدارة الناشرين", "manage_pub_back")]);
+
+    return ctx.reply("🗑️ **اختر الناشر الذي ترغب في إزالته:**", Markup.inlineKeyboard(buttons));
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+bot.action("manage_pub_back", async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(adminId)) return ctx.answerCbQuery();
+    await ctx.answerCbQuery();
+
+    const buttons = [
+      [Markup.button.callback("➕ إضافة ناشر جديد", "manage_pub_add")],
+      [Markup.button.callback("📋 عرض الناشرين الحاليين", "manage_pub_list")],
+      [Markup.button.callback("🗑️ إزالة ناشر معتمد", "manage_pub_remove_list")]
+    ];
+    return ctx.reply("👥 **بوابة إدارة الناشرين المعتمدين**\n\nيمكنك إضافة أو حذف أو استعراض الأشخاص المصرح لهم بنشر الكويزات.", Markup.inlineKeyboard(buttons));
+  } catch (err) {
+    console.error(err);
+  }
+});
+
+bot.action(/^del_pub_(.+)/, async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(adminId)) return ctx.answerCbQuery();
+    const targetUserId = ctx.match[1];
+    
+    const publishers = loadData(publishersFile);
+    if (!publishers[targetUserId]) {
+      return ctx.answerCbQuery("❌ هذا المستخدم ليس ناشراً بالفعل.", { show_alert: true });
+    }
+
+    const username = publishers[targetUserId].username;
+    delete publishers[targetUserId];
+    saveData(publishersFile, publishers);
+
+    await ctx.answerCbQuery(`🗑️ تم إزالة ${username} بنجاح!`, { show_alert: true });
+    
+    const keys = Object.keys(publishers);
+    if (!keys.length) {
+      return ctx.reply("📋 لا يوجد أي ناشرين معتمدين حالياً.");
+    }
+
+    const buttons = keys.map(key => {
+      const pub = publishers[key];
+      return [Markup.button.callback(`🗑️ إزالة: ${pub.username}`, `del_pub_${key}`)];
+    });
+    buttons.push([Markup.button.callback("🔙 رجوع لإدارة الناشرين", "manage_pub_back")]);
+
+    return ctx.reply("🗑️ **اختر الناشر الذي ترغب في إزالته:**", Markup.inlineKeyboard(buttons));
+  } catch (err) {
+    console.error(err);
   }
 });
 

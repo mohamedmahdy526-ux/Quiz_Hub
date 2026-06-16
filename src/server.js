@@ -1,6 +1,16 @@
 require("dotenv").config(); // شحن البيئة المحيطة والـ Tokens فوراً
 const bot = require("./bot/index"); // استدعاء كائن البوت المطهر
 const commands = require("./bot/commands"); // استيراد الأوامر الفعالة
+const http = require("http");
+
+// 🌐 سيرفر ويب بسيط لتجاوز فحص الصحة (Health Check) في الاستضافة ومنع السقوط بـ SIGTERM
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Bot is running!\n");
+}).listen(PORT, () => {
+  console.log(`✔ Web health check server listening on port ${PORT}`);
+});
 
 // 🎯 قفل اللعبة هنا: الـ Launch الفريد والوحيد المعتمد على مستوى السيستم بالكامل
 bot.launch({

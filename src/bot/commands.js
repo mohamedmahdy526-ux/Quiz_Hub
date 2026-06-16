@@ -38,6 +38,18 @@ const commands = [
   {
     command: 'publish',
     description: '🔐 (للإدارة) نشر أسئلة الكويز المرفوع'
+  },
+  {
+    command: 'add_publisher',
+    description: '👥 (للأدمن) إضافة ناشر جديد'
+  },
+  {
+    command: 'remove_publisher',
+    description: '👥 (للأدمن) إزالة ناشر معتمد'
+  },
+  {
+    command: 'publishers',
+    description: '📋 (للأدمن) عرض قائمة الناشرين'
   }
 ];
 
