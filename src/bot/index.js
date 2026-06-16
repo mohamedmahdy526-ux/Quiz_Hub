@@ -28,13 +28,31 @@ function saveData(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
+const publishersFile = path.join(__dirname, "../../publishers.json");
+
+function isAuthorized(userId) {
+  if (String(userId) === String(adminId)) return true;
+  const publishers = loadData(publishersFile);
+  return !!publishers[String(userId)];
+}
+
 // 📱 قائمة الأزرار الرئيسية التفاعلية لجهاز الممرض الأكاديمي
 function getMainMenuKeyboard(userId) {
-  const isAdmin = String(userId) === String(process.env.ADMIN_ID);
-  if (isAdmin) {
+  const isOwner = String(userId) === String(adminId);
+  const isPub = isAuthorized(userId);
+  
+  if (isOwner) {
     return Markup.keyboard([
       ["📂 تمريض مكثف المنيا"],
       ["➕ إضافة عنصر", "⚙️ تعديل ونقل", "🗑️ حذف عنصر"],
+      ["📝 إنشاء ونشر كويز"],
+      ["👤 ملفي الأكاديمي", "🏆 لوحة الشرف"],
+      ["📜 شهاداتي ونتائجي", "🧠 شرح أخطائي"],
+      ["ℹ️ مساعدة وتوجيه", "💬 تواصل مع الإدارة"]
+    ]).resize();
+  } else if (isPub) {
+    return Markup.keyboard([
+      ["📂 تمريض مكثف المنيا"],
       ["📝 إنشاء ونشر كويز"],
       ["👤 ملفي الأكاديمي", "🏆 لوحة الشرف"],
       ["📜 شهاداتي ونتائجي", "🧠 شرح أخطائي"],
@@ -424,12 +442,14 @@ bot.on("poll_answer", async (ctx) => {
 });
 
 bot.on("document", async (ctx, next) => {
-  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  if (ctx.chat.type !== "private" || !isAuthorized(ctx.from.id)) return;
   
   // لو الأدمن فاتح جلسة لرفع ملفات الشجرة، وجهها لمعالج الشجرة
   const { getSession } = require("../utils/conversationSessions");
   if (getSession(ctx.from.id)) {
-    return handleIncomingTextAndFiles(ctx);
+    if (String(ctx.from.id) === String(adminId)) {
+      return handleIncomingTextAndFiles(ctx);
+    }
   }
   
   return handleUpload(ctx);
@@ -446,7 +466,7 @@ bot.hears("📂 تمريض مكثف المنيا", async (ctx) => {
 });
 
 bot.hears("📝 إنشاء ونشر كويز", async (ctx) => {
-  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  if (ctx.chat.type !== "private" || !isAuthorized(ctx.from.id)) return;
   return ctx.reply(
     `📤 **نظام إنشاء ونشر الكويزات (خارج المنصة الشجرية)**\n` +
     `------------------------------------\n` +
@@ -468,16 +488,115 @@ bot.command("browse", async (ctx) => {
 });
 
 bot.command("publish", async (ctx) => {
-  if (ctx.chat.type !== "private" || String(ctx.from.id) !== String(adminId)) return;
+  if (ctx.chat.type !== "private" || !isAuthorized(ctx.from.id)) return;
   return handlePublish(ctx);
 });
 
 bot.action(/^publish_(.+)/, async (ctx) => {
   try {
+    if (!isAuthorized(ctx.from.id)) {
+      return ctx.answerCbQuery("❌ غير مصرح لك باستخدام هذا الأمر.", { show_alert: true });
+    }
     const groupId = ctx.match[1];
     await ctx.answerCbQuery();
     return preparePublishMenu(ctx, groupId); 
   } catch (err) {}
+});
+
+// إدارة الناشرين المعتمدين (خاص بالأدمن فقط)
+bot.command("add_publisher", async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(adminId)) return;
+    
+    let targetUserId;
+    let targetUsername = "";
+    
+    if (ctx.message.reply_to_message) {
+      const replyUser = ctx.message.reply_to_message.from;
+      targetUserId = String(replyUser.id);
+      targetUsername = replyUser.username ? `@${replyUser.username}` : (replyUser.first_name || "مستخدم");
+    } else {
+      const args = ctx.message.text.split(" ").slice(1);
+      if (!args.length) {
+        return ctx.reply("❌ يرجى استخدام الأمر بالرد على رسالة الشخص المراد إضافته، أو كتابة الآيدي الخاص به بعد الأمر:\n`/add_publisher 123456789`", { parse_mode: "Markdown" });
+      }
+      targetUserId = args[0].trim();
+      targetUsername = args.slice(1).join(" ").trim() || `آيدي: ${targetUserId}`;
+    }
+
+    if (!targetUserId || isNaN(targetUserId)) {
+      return ctx.reply("❌ يرجى إدخال آيدي مستخدم صحيح (أرقام فقط).");
+    }
+
+    if (String(targetUserId) === String(adminId)) {
+      return ctx.reply("ℹ️ هذا الآيدي هو آيدي الأدمن الأساسي للبوت بالفعل.");
+    }
+
+    const publishers = loadData(publishersFile);
+    publishers[targetUserId] = { 
+      username: targetUsername, 
+      addedAt: new Date().toISOString() 
+    };
+    saveData(publishersFile, publishers);
+
+    return ctx.reply(`✅ تم إضافة ${targetUsername} كـ ناشر معتمد بنجاح!`);
+  } catch (err) {
+    console.error("❌ Add Publisher Error:", err.message);
+    return ctx.reply("❌ حدث خطأ أثناء إضافة الناشر.");
+  }
+});
+
+bot.command("remove_publisher", async (ctx) => {
+  try {
+    if (String(ctx.from.id) !== String(adminId)) return;
+
+    let targetUserId;
+    if (ctx.message.reply_to_message) {
+      targetUserId = String(ctx.message.reply_to_message.from.id);
+    } else {
+      const args = ctx.message.text.split(" ").slice(1);
+      if (!args.length) {
+        return ctx.reply("❌ يرجى استخدام الأمر بالرد على رسالة الشخص المراد إزالته، أو كتابة الآيدي الخاص به بعد الأمر:\n`/remove_publisher 123456789`", { parse_mode: "Markdown" });
+      }
+      targetUserId = args[0].trim();
+    }
+
+    const publishers = loadData(publishersFile);
+    if (!publishers[targetUserId]) {
+      return ctx.reply("❌ هذا المستخدم ليس ناشراً معتمداً بالفعل.");
+    }
+
+    const username = publishers[targetUserId].username;
+    delete publishers[targetUserId];
+    saveData(publishersFile, publishers);
+
+    return ctx.reply(`🗑️ تم إزالة ${username} من قائمة الناشرين المعتمدين.`);
+  } catch (err) {
+    console.error("❌ Remove Publisher Error:", err.message);
+    return ctx.reply("❌ حدث خطأ أثناء إزالة الناشر.");
+  }
+});
+
+bot.command("publishers", async (ctx) => {
+  try {
+    if (!isAuthorized(ctx.from.id)) return;
+
+    const publishers = loadData(publishersFile);
+    const keys = Object.keys(publishers);
+    if (!keys.length) {
+      return ctx.reply("📋 لا يوجد أي ناشرين معتمدين مضافين حالياً.");
+    }
+
+    let msg = "📋 قائمة الناشرين المعتمدين:\n\n";
+    keys.forEach((key, index) => {
+      const pub = publishers[key];
+      msg += `${index + 1}. ${pub.username} (ID: \`${key}\`)\n`;
+    });
+    return ctx.reply(msg, { parse_mode: "Markdown" });
+  } catch (err) {
+    console.error("❌ List Publishers Error:", err.message);
+    return ctx.reply("❌ حدث خطأ أثناء جلب قائمة الناشرين.");
+  }
 });
 
 // 🧠 استدعاء خادم Gemini AI بأسلوب أصيل وخفيف دون أي مكتبات خارجية ثقيلة مع نظام تنقل احتياطي للموديلات
