@@ -40,6 +40,10 @@ const commands = [
     description: '🔐 (للإدارة) نشر أسئلة الكويز المرفوع'
   },
   {
+    command: 'link',
+    description: '🔗 ربط الجروب الحالي بحسابك لتتمكن من النشر فيه'
+  },
+  {
     command: 'add_publisher',
     description: '👥 (للأدمن) إضافة ناشر جديد'
   },

@@ -300,10 +300,29 @@ bot.on("message", async (ctx, next) => {
     }
 
     if (chat && (chat.type === "group" || chat.type === "supergroup" || chat.type === "channel")) {
-      let groups = loadData(groupsFile);
-      if (!groups[String(chat.id)]) {
-        groups[String(chat.id)] = { id: chat.id, title: chat.title, type: chat.type };
-        saveData(groupsFile, groups);
+      if (userId && isAuthorized(userId)) {
+        let groups = loadData(groupsFile);
+        const groupIdStr = String(chat.id);
+        if (!groups[groupIdStr]) {
+          groups[groupIdStr] = { id: chat.id, title: chat.title, type: chat.type, addedBy: [userId] };
+          saveData(groupsFile, groups);
+          console.log(`📡 Registered new group/channel: ${chat.title} to publisher: ${userId}`);
+        } else {
+          if (!groups[groupIdStr].addedBy) {
+            groups[groupIdStr].addedBy = [userId];
+            saveData(groupsFile, groups);
+            console.log(`📡 Associated existing group/channel: ${chat.title} to publisher: ${userId}`);
+          } else {
+            if (!Array.isArray(groups[groupIdStr].addedBy)) {
+              groups[groupIdStr].addedBy = [String(groups[groupIdStr].addedBy)];
+            }
+            if (!groups[groupIdStr].addedBy.includes(userId)) {
+              groups[groupIdStr].addedBy.push(userId);
+              saveData(groupsFile, groups);
+              console.log(`📡 Added publisher ${userId} to group/channel: ${chat.title}`);
+            }
+          }
+        }
       }
     }
   } catch (err) {
@@ -534,6 +553,86 @@ bot.command("publish", async (ctx) => {
   return handlePublish(ctx);
 });
 
+bot.command("link", async (ctx) => {
+  try {
+    const chat = ctx.chat;
+    const userId = String(ctx.from?.id);
+    if (!isAuthorized(userId)) return;
+
+    if (chat.type === "private") {
+      return ctx.reply("❌ هذا الأمر يتم تشغيله داخل الجروبات أو القنوات فقط.");
+    }
+
+    let groups = loadData(groupsFile);
+    const groupIdStr = String(chat.id);
+    if (!groups[groupIdStr]) {
+      groups[groupIdStr] = {
+        id: chat.id,
+        title: chat.title,
+        type: chat.type,
+        addedBy: [userId]
+      };
+    } else {
+      if (!groups[groupIdStr].addedBy) {
+        groups[groupIdStr].addedBy = [userId];
+      } else {
+        if (!Array.isArray(groups[groupIdStr].addedBy)) {
+          groups[groupIdStr].addedBy = [String(groups[groupIdStr].addedBy)];
+        }
+        if (!groups[groupIdStr].addedBy.includes(userId)) {
+          groups[groupIdStr].addedBy.push(userId);
+        }
+      }
+    }
+    saveData(groupsFile, groups);
+    return ctx.reply(`✅ تم ربط هذا الجروب/القناة ("${chat.title}") بحسابك بنجاح! يمكنك النشر إليه الآن.`);
+  } catch (err) {
+    console.error("❌ Link Command Error:", err.message);
+    return ctx.reply("❌ حدث خطأ أثناء ربط الجروب.");
+  }
+});
+
+bot.on("my_chat_member", async (ctx) => {
+  try {
+    const chat = ctx.chat;
+    const from = ctx.myChatMember?.from;
+    const status = ctx.myChatMember?.new_chat_member?.status;
+
+    if (chat && (chat.type === "group" || chat.type === "supergroup" || chat.type === "channel")) {
+      if (status === "member" || status === "administrator") {
+        if (from && isAuthorized(from.id)) {
+          const userId = String(from.id);
+          let groups = loadData(groupsFile);
+          const groupIdStr = String(chat.id);
+          if (!groups[groupIdStr]) {
+            groups[groupIdStr] = {
+              id: chat.id,
+              title: chat.title,
+              type: chat.type,
+              addedBy: [userId]
+            };
+          } else {
+            if (!groups[groupIdStr].addedBy) {
+              groups[groupIdStr].addedBy = [userId];
+            } else {
+              if (!Array.isArray(groups[groupIdStr].addedBy)) {
+                groups[groupIdStr].addedBy = [String(groups[groupIdStr].addedBy)];
+              }
+              if (!groups[groupIdStr].addedBy.includes(userId)) {
+                groups[groupIdStr].addedBy.push(userId);
+              }
+            }
+          }
+          saveData(groupsFile, groups);
+          console.log(`📡 Automatically registered group ${chat.title} to publisher: ${userId}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("❌ my_chat_member handler error:", err.message);
+  }
+});
+
 bot.action(/^publish_(.+)/, async (ctx) => {
   try {
     if (!isAuthorized(ctx.from.id)) {
@@ -543,6 +642,25 @@ bot.action(/^publish_(.+)/, async (ctx) => {
     await ctx.answerCbQuery();
     return preparePublishMenu(ctx, groupId); 
   } catch (err) {}
+});
+
+bot.action(/^stop_publish_(.+)/, async (ctx) => {
+  try {
+    const targetUserId = ctx.match[1];
+    const adminId = process.env.ADMIN_ID || "437169371";
+    if (String(ctx.from.id) !== String(targetUserId) && String(ctx.from.id) !== String(adminId)) {
+      return ctx.answerCbQuery("❌ غير مصرح لك بإيقاف هذا النشر.", { show_alert: true });
+    }
+    
+    if (global.activePublishing && global.activePublishing[targetUserId]) {
+      global.activePublishing[targetUserId].shouldStop = true;
+      await ctx.answerCbQuery("🛑 جاري إيقاف عملية النشر...");
+    } else {
+      await ctx.answerCbQuery("❌ لا توجد عملية نشر نشطة حالياً لهذا الناشر.", { show_alert: true });
+    }
+  } catch (err) {
+    console.error("❌ Stop publish action error:", err.message);
+  }
 });
 
 // إدارة الناشرين المعتمدين (خاص بالأدمن فقط)

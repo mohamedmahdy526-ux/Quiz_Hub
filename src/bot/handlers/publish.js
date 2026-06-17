@@ -93,8 +93,22 @@ function shuffleQuestion(q, avoidCorrectIndex = -1) {
 // أمر /publish لبناء قائمة الأزرار الشفافة
 async function handlePublish(ctx) {
   try {
-    const groupsArray = Object.values(loadGroups());
-    if (!groupsArray.length) return ctx.reply("❌ لا توجد أهداف أو جروبات محفوظة");
+    const userId = String(ctx.from.id);
+    const adminId = process.env.ADMIN_ID || "437169371";
+    const isOwner = userId === String(adminId);
+
+    let groupsArray = Object.values(loadGroups());
+    if (!isOwner) {
+      groupsArray = groupsArray.filter(group => {
+        if (!group.addedBy) return false;
+        if (Array.isArray(group.addedBy)) {
+          return group.addedBy.map(String).includes(userId);
+        }
+        return String(group.addedBy) === userId;
+      });
+    }
+
+    if (!groupsArray.length) return ctx.reply("❌ لا توجد أهداف أو جروبات محفوظة خاصة بك");
 
     const buttons = groupsArray.map((group) => {
       const label = group.type === "private" ? `👤 ${group.title} (خاص)` : `📢 ${group.title} (عام)`;
@@ -174,7 +188,24 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
     const target = groupsObject[String(groupId)];
     if (!target) return ctx.reply("❌ الهدف المستهدف لم يعد متاحاً.");
 
-    await ctx.reply(`🚀 جاري نشر محاضرة:\n\n📚 ${lectureName}\n🎯 عدد الأسئلة: ${questions.length}\n⏳ انتظر حتى اكتمال النشر...`, { parse_mode: undefined });
+    global.activePublishing = global.activePublishing || {};
+    global.activePublishing[userId] = {
+      groupId: groupId,
+      shouldStop: false
+    };
+
+    const statusMessage = await ctx.reply(
+      `🚀 جاري نشر محاضرة:\n\n` +
+      `📚 ${lectureName}\n` +
+      `🎯 عدد الأسئلة: ${questions.length}\n\n` +
+      `⏳ يمكنك إيقاف النشر في أي وقت بالضغط على الزر بالأسفل:`,
+      {
+        parse_mode: undefined,
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback("🛑 إيقاف النشر / Stop Publishing", `stop_publish_${userId}`)]
+        ])
+      }
+    );
 
     // 🎯 البانر الثابت المنظم المعتمد منك
     const finalIntro = 
@@ -196,7 +227,14 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
 
     let count = 0;
     let lastCorrectIndex = -1;
+    let stopped = false;
+
     for (let originalQuestion of questions) {
+      if (global.activePublishing[userId] && global.activePublishing[userId].shouldStop) {
+        stopped = true;
+        break;
+      }
+
       try {
         const shuffledQ = shuffleQuestion(originalQuestion, lastCorrectIndex);
         lastCorrectIndex = shuffledQ.correct;
@@ -207,11 +245,25 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
             await ctx.telegram.sendAudio(target.id, shuffledQ.audio, {
               caption: `🔊 استمع جيداً للمقطع الطبي المرفق للسؤال Q${count + 1} 🩺`
             });
-            await new Promise((r) => setTimeout(r, 2000));
+            for (let w = 0; w < 4; w++) {
+              await new Promise((r) => setTimeout(r, 500));
+              if (global.activePublishing[userId] && global.activePublishing[userId].shouldStop) {
+                stopped = true;
+                break;
+              }
+            }
+            if (stopped) break;
           } catch (audioError) {
             console.log("❌ Failed to send audio natively, sending as text link:", audioError.message);
             await ctx.telegram.sendMessage(target.id, `🔊 المقطع الصوتي المرفق للسؤال Q${count + 1}:\n🔗 ${shuffledQ.audio}`);
-            await new Promise((r) => setTimeout(r, 2000));
+            for (let w = 0; w < 4; w++) {
+              await new Promise((r) => setTimeout(r, 500));
+              if (global.activePublishing[userId] && global.activePublishing[userId].shouldStop) {
+                stopped = true;
+                break;
+              }
+            }
+            if (stopped) break;
           }
         }
 
@@ -229,12 +281,40 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
         savePoll(pollMessage.poll.id, lectureName, shuffledQ.correct, questions.length, shuffledQ.question, shuffledQ.options);
         count++;
         
-        await new Promise((r) => setTimeout(r, 4000));
+        for (let w = 0; w < 8; w++) {
+          await new Promise((r) => setTimeout(r, 500));
+          if (global.activePublishing[userId] && global.activePublishing[userId].shouldStop) {
+            stopped = true;
+            break;
+          }
+        }
+        if (stopped) break;
 
       } catch (pollError) {
         console.log(`❌ Poll Error Caught at index [${count}]:`, pollError.message);
         continue; 
       }
+    }
+
+    delete global.activePublishing[userId];
+
+    if (stopped) {
+      try {
+        await ctx.telegram.editMessageText(
+          ctx.chat.id,
+          statusMessage.message_id,
+          null,
+          `🛑 تم إلغاء وإيقاف عملية النشر بطلب منك.\n\n📚 المحاضرة: ${lectureName}\n🎯 تم نشر ${count} سؤال فقط من أصل ${questions.length}.`
+        );
+      } catch (err) {
+        await ctx.reply(`🛑 تم إيقاف عملية النشر.\nتم نشر ${count} سؤال من أصل ${questions.length}.`);
+      }
+
+      await ctx.telegram.sendMessage(
+        target.id,
+        `⚠️ تم إيقاف الكويز وإلغاء عملية النشر بواسطة الناشر.`
+      );
+      return;
     }
 
     // 🎯 زر النتيجة الشفاف النهائي للطلاب في الجروب
@@ -290,7 +370,16 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
       console.log("❌ Smart Reminders execution failed:", reminderErr.message);
     }
 
-    return ctx.reply(`✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`, { parse_mode: undefined });
+    try {
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        statusMessage.message_id,
+        null,
+        `✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`
+      );
+    } catch (err) {
+      await ctx.reply(`✅ اكتمل نشر محاضرة:\n\n📚 ${lectureName}\n\n🎯 عدد الأسئلة: ${questions.length}`, { parse_mode: undefined });
+    }
 
   } catch (err) {
     console.log("❌ Massive Publishing Engine Error:", err.message);
