@@ -21,7 +21,23 @@ const pollsFile = path.join(__dirname, "../../polls.json");
 const scoresFile = path.join(__dirname, "../../scores.json");
 
 function loadData(file) {
-  if (!fs.existsSync(file)) fs.writeFileSync(file, JSON.stringify({}));
+  if (!fs.existsSync(file) || fs.readFileSync(file, "utf8").trim() === "{}" || fs.readFileSync(file, "utf8").trim() === "") {
+    let backupFile = null;
+    if (file.endsWith("publishers.json")) {
+      backupFile = file.replace("publishers.json", "publishers_backup.json");
+    }
+    
+    if (backupFile && fs.existsSync(backupFile)) {
+      try {
+        fs.writeFileSync(file, fs.readFileSync(backupFile, "utf8"));
+        console.log(`✔ Restored ${path.basename(file)} from backup file.`);
+      } catch (err) {
+        console.error(`❌ Failed to restore ${path.basename(file)}:`, err.message);
+      }
+    } else {
+      fs.writeFileSync(file, JSON.stringify({}));
+    }
+  }
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return {}; }
 }
 

@@ -11,6 +11,17 @@ const pollsFile = path.join(__dirname, "../../../polls.json");
 global.waitingForSubject = global.waitingForSubject || {};
 
 function loadGroups() {
+  const backupFile = path.join(__dirname, "../../../groups_backup.json");
+  if (!fs.existsSync(groupsFile) || fs.readFileSync(groupsFile, "utf8").trim() === "{}" || fs.readFileSync(groupsFile, "utf8").trim() === "") {
+    if (fs.existsSync(backupFile)) {
+      try {
+        fs.writeFileSync(groupsFile, fs.readFileSync(backupFile, "utf8"));
+        console.log("✔ Restored groups.json from backup file.");
+      } catch (e) {
+        console.error("❌ Failed to restore groups.json:", e.message);
+      }
+    }
+  }
   if (!fs.existsSync(groupsFile)) return {};
   try { return JSON.parse(fs.readFileSync(groupsFile, "utf8")); } catch (e) { return {}; }
 }
