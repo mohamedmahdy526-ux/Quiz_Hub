@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { Markup } = require("telegraf");
 const { getQuestions } = require("../../utils/storage");
+const { truncateText } = require("../../utils/formatter");
 
 const groupsFile = path.join(__dirname, "../../../groups.json");
 const pollsFile = path.join(__dirname, "../../../polls.json");
@@ -286,13 +287,13 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
           is_anonymous: false
         };
         if (shuffledQ.explanation) {
-          pollOptions.explanation = shuffledQ.explanation.slice(0, 200);
+          pollOptions.explanation = truncateText(shuffledQ.explanation, 200);
         }
 
         const pollMessage = await ctx.telegram.sendPoll(
           target.id,
-          `Q${count + 1}) ${shuffledQ.question}`.slice(0, 300),
-          shuffledQ.options.map(opt => opt.slice(0, 100)),
+          truncateText(`Q${count + 1}) ${shuffledQ.question}`, 300),
+          shuffledQ.options.map(opt => truncateText(opt, 100)),
           pollOptions
         );
 

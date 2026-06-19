@@ -44,6 +44,26 @@ function cleanText(text) {
     .trim();
 }
 
+/**
+ * دالة القص الذكي للنصوص دون قطع الكلمات مع إضافة ثلاث نقاط عند الاقتضاء
+ */
+function truncateText(text, limit) {
+  if (!text || text.length <= limit) return text;
+  
+  // نترك مساحة 3 حروف للثلاث نقاط
+  const maxLen = limit - 3;
+  
+  // البحث عن آخر مسافة قبل الحد الأقصى لتفادي قطع الكلمات
+  const lastSpace = text.lastIndexOf(' ', maxLen);
+  if (lastSpace > 0) {
+    return text.substring(0, lastSpace) + '...';
+  }
+  
+  // كحالة احتياطية لو النص عبارة عن كلمة واحدة طويلة جداً
+  return text.substring(0, maxLen) + '...';
+}
+
 module.exports = {
-  cleanText
+  cleanText,
+  truncateText
 };

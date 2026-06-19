@@ -5,6 +5,7 @@ const https = require("https");
 
 const { handleUpload } = require("./handlers/upload");
 const { handlePublish, preparePublishMenu, startMassPublishing, savePoll, shuffleQuestion } = require("./handlers/publish");
+const { truncateText } = require("../utils/formatter");
 
 // 🌳 استيراد معالجات المنصة الأكاديمية التفاعلية الجديدة
 const db = require("../database/db");
@@ -265,13 +266,13 @@ bot.on("message", async (ctx, next) => {
                     is_anonymous: false
                   };
                   if (shuffledQ.explanation) {
-                    pollOptions.explanation = shuffledQ.explanation.slice(0, 200);
+                    pollOptions.explanation = truncateText(shuffledQ.explanation, 200);
                   }
 
                   const pollMessage = await ctx.telegram.sendPoll(
                     ctx.chat.id,
-                    `Q${count + 1}) ${shuffledQ.question}`.slice(0, 300),
-                    shuffledQ.options.map(opt => opt.slice(0, 100)),
+                    truncateText(`Q${count + 1}) ${shuffledQ.question}`, 300),
+                    shuffledQ.options.map(opt => truncateText(opt, 100)),
                     pollOptions
                   );
 
@@ -1447,13 +1448,13 @@ bot.action(/^start_quiz_node_(.+)/, async (ctx) => {
           is_anonymous: false
         };
         if (shuffledQ.explanation) {
-          pollOptions.explanation = shuffledQ.explanation.slice(0, 200);
+          pollOptions.explanation = truncateText(shuffledQ.explanation, 200);
         }
 
         const pollMessage = await ctx.telegram.sendPoll(
           ctx.chat.id,
-          `Q${count + 1}) ${shuffledQ.question}`.slice(0, 300),
-          shuffledQ.options.map(opt => opt.slice(0, 100)),
+          truncateText(`Q${count + 1}) ${shuffledQ.question}`, 300),
+          shuffledQ.options.map(opt => truncateText(opt, 100)),
           pollOptions
         );
 
