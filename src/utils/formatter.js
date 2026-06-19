@@ -24,6 +24,9 @@ function cleanText(text) {
     // تحويل صيغة (A-) إلى الصيغة الأكاديمية المعتمدة للبوت (A) )
     .replace(/^([A-F])-\s*/gim, '$1) ')
 
+    // إزالة نجوم التلوين والزيادات حول الكلمات المفتاحية في بداية السطر
+    .replace(/^\s*\*?\*?\s*(Answer|correct|explanation|توضيح)\s*\*?\*?\s*:\s*\*?\*?\s*/gim, '$1: ')
+
     // توحيد صيغة answer : المكتوبة بسمول لتصبح Answer:
     .replace(/^answer\s*:/gim, 'Answer:')
 
@@ -32,6 +35,10 @@ function cleanText(text) {
 
     // توحيد صيغة explanation : وتوضيح : لتصبح Explanation: وتتوافق مع الـ Parser
     .replace(/^(explanation|توضيح)\s*:/gim, 'Explanation:')
+
+    // إزالة النجوم الختامية من أسطر الإجابة والتوضيح إن وجدت
+    .replace(/^(Answer\s*:\s*.*?)\s*\*?\*?$/gim, '$1')
+    .replace(/^(Explanation\s*:\s*.*?)\s*\*?\*?$/gim, '$1')
 
     // إزالة المسافات الزائدة من أول وآخر الملف تماماً
     .trim();

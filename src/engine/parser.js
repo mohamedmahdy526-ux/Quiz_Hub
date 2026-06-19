@@ -28,34 +28,30 @@ function parseQuestions(text) {
       };
     }
 
-    // أي اختيار A) B) C) D) E) F)
-    else if (/^[A-Z]\)/i.test(line)) {
+    // أي اختيار A) B) C) D) E) F) أو A. B. C. D. E. F.
+    else if (/^[A-F][\)\.]/i.test(line)) {
 
       current.options.push(
-        line.replace(/^[A-Z]\)\s*/i, '')
+        line.replace(/^[A-F][\)\.]\s*/i, '').trim()
       );
     }
 
     // الإجابة
-    else if (/^Answer:/i.test(line)) {
+    else if (/^\*?\*?\s*Answer\s*:\s*\*?\*?\s*([A-F])/i.test(line)) {
 
-      const answer =
-        line
-        .replace(/^Answer:/i, '')
-        .trim()
-        .toUpperCase();
-
-      // تحويل الحرف إلى index
-      current.correct =
-        answer.charCodeAt(0) - 65;
+      const match = line.match(/^\*?\*?\s*Answer\s*:\s*\*?\*?\s*([A-F])/i);
+      if (match && match[1]) {
+        const answer = match[1].trim().toUpperCase();
+        current.correct = answer.charCodeAt(0) - 65;
+      }
     }
 
     // التوضيح
-    else if (/^(Explanation|explanation|توضيح)\s*:/i.test(line)) {
-      current.explanation =
-        line
-        .replace(/^(Explanation|explanation|توضيح)\s*:/i, '')
-        .trim();
+    else if (/^\*?\*?\s*(Explanation|explanation|توضيح)\s*\*?\*?\s*:\s*\*?\*?\s*(.+)/i.test(line)) {
+      const match = line.match(/^\*?\*?\s*(Explanation|explanation|توضيح)\s*\*?\*?\s*:\s*\*?\*?\s*(.+)/i);
+      if (match && match[2]) {
+        current.explanation = match[2].replace(/\s*\*?\*?$/, '').trim();
+      }
     }
   }
 

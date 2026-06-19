@@ -56,10 +56,10 @@ function parseQuestions(text) {
     /**
      * 3️⃣ لقطة الإجابة المستقلة الثابتة (Answer: B)
      */
-    else if (/^Answer\s*:\s*([A-F])/i.test(line)) {
+    else if (/^\*?\*?\s*Answer\s*:\s*\*?\*?\s*([A-F])/i.test(line)) {
       if (!current) continue;
 
-      const match = line.match(/^Answer\s*:\s*([A-F])/i);
+      const match = line.match(/^\*?\*?\s*Answer\s*:\s*\*?\*?\s*([A-F])/i);
       if (match && match[1]) {
         const correctLetter = match[1];
         current.correct = answerMap[correctLetter];
@@ -79,12 +79,12 @@ function parseQuestions(text) {
     /**
      * 5️⃣ لقطة التوضيح للإجابة (Explanation: text)
      */
-    else if (/^Explanation\s*:\s*(.+)/i.test(line)) {
+    else if (/^\*?\*?\s*(Explanation|توضيح)\s*\*?\*?\s*:\s*\*?\*?\s*(.+)/i.test(line)) {
       if (!current) continue;
 
-      const match = line.match(/^Explanation\s*:\s*(.+)/i);
-      if (match && match[1]) {
-        current.explanation = match[1].trim();
+      const match = line.match(/^\*?\*?\s*(Explanation|توضيح)\s*\*?\*?\s*:\s*\*?\*?\s*(.+)/i);
+      if (match && match[2]) {
+        current.explanation = match[2].replace(/\s*\*?\*?$/, '').trim();
       }
     }
   }
