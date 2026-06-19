@@ -1,2 +1,8 @@
 node_modules
 .env
+quiz.db*
+groups.json
+polls.json
+quizzes.json
+scores.json
+publishers.json

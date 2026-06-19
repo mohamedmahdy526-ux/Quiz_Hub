@@ -98,7 +98,7 @@ async function handlePublish(ctx) {
     const adminId = process.env.ADMIN_ID || "437169371";
     const isOwner = userId === String(adminId);
 
-    let groupsArray = Object.values(loadGroups());
+    let groupsArray = Object.values(loadGroups()).filter(g => g.type !== "private");
     if (!isOwner) {
       groupsArray = groupsArray.filter(group => {
         if (!group.addedBy) return false;
@@ -109,7 +109,12 @@ async function handlePublish(ctx) {
       });
     }
 
-    if (!groupsArray.length) return ctx.reply("❌ لا توجد أهداف أو جروبات محفوظة خاصة بك");
+    // إضافة الخاص بكل ناشر ديناميكياً لتسهيل النشر في محادثته الخاصة مع البوت
+    groupsArray.push({
+      id: userId,
+      title: "محادثتك الخاصة مع البوت",
+      type: "private"
+    });
 
     const buttons = groupsArray.map((group) => {
       const label = group.type === "private" ? `👤 ${group.title} (خاص)` : `📢 ${group.title} (عام)`;
@@ -186,7 +191,14 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
     }
 
     const groupsObject = loadGroups();
-    const target = groupsObject[String(groupId)];
+    let target = groupsObject[String(groupId)];
+    if (!target && String(groupId) === String(userId)) {
+      target = {
+        id: userId,
+        title: "محادثتك الخاصة مع البوت",
+        type: "private"
+      };
+    }
     if (!target) return ctx.reply("❌ الهدف المستهدف لم يعد متاحاً.");
 
     global.activePublishing = global.activePublishing || {};
