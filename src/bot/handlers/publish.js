@@ -291,8 +291,8 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
 
         const pollMessage = await ctx.telegram.sendPoll(
           target.id,
-          `Q${count + 1}) ${shuffledQ.question}`,
-          shuffledQ.options,
+          `Q${count + 1}) ${shuffledQ.question}`.slice(0, 300),
+          shuffledQ.options.map(opt => opt.slice(0, 100)),
           pollOptions
         );
 
