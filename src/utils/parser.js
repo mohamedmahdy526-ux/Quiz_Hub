@@ -76,6 +76,17 @@ function parseQuestions(text) {
         current.audio = match[1].trim();
       }
     }
+    /**
+     * 5️⃣ لقطة التوضيح للإجابة (Explanation: text)
+     */
+    else if (/^Explanation\s*:\s*(.+)/i.test(line)) {
+      if (!current) continue;
+
+      const match = line.match(/^Explanation\s*:\s*(.+)/i);
+      if (match && match[1]) {
+        current.explanation = match[1].trim();
+      }
+    }
   }
 
   // حفظ آخر سؤال في الحلقة

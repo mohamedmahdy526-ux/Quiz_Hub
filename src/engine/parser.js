@@ -49,6 +49,14 @@ function parseQuestions(text) {
       current.correct =
         answer.charCodeAt(0) - 65;
     }
+
+    // التوضيح
+    else if (/^(Explanation|explanation|توضيح)\s*:/i.test(line)) {
+      current.explanation =
+        line
+        .replace(/^(Explanation|explanation|توضيح)\s*:/i, '')
+        .trim();
+    }
   }
 
   if (current) {

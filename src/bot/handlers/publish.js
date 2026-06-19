@@ -14,7 +14,7 @@ function loadGroups() {
   try { return JSON.parse(fs.readFileSync(groupsFile, "utf8")); } catch (e) { return {}; }
 }
 
-function savePoll(pollId, lectureName, correctOption, totalQuestions, questionText, options) {
+function savePoll(pollId, lectureName, correctOption, totalQuestions, questionText, options, explanation) {
   let polls = {};
   if (fs.existsSync(pollsFile)) {
     try { polls = JSON.parse(fs.readFileSync(pollsFile, "utf8")); } catch (e) {}
@@ -24,7 +24,8 @@ function savePoll(pollId, lectureName, correctOption, totalQuestions, questionTe
     correct: correctOption, 
     total: totalQuestions,
     questionText: questionText,
-    options: options
+    options: options,
+    explanation: explanation
   };
   fs.writeFileSync(pollsFile, JSON.stringify(polls, null, 2));
 }
@@ -267,18 +268,23 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
           }
         }
 
+        const pollOptions = { 
+          type: "quiz", 
+          correct_option_id: shuffledQ.correct, 
+          is_anonymous: false
+        };
+        if (shuffledQ.explanation) {
+          pollOptions.explanation = shuffledQ.explanation.slice(0, 200);
+        }
+
         const pollMessage = await ctx.telegram.sendPoll(
           target.id,
           `Q${count + 1}) ${shuffledQ.question}`,
           shuffledQ.options,
-          { 
-            type: "quiz", 
-            correct_option_id: shuffledQ.correct, 
-            is_anonymous: false
-          }
+          pollOptions
         );
 
-        savePoll(pollMessage.poll.id, lectureName, shuffledQ.correct, questions.length, shuffledQ.question, shuffledQ.options);
+        savePoll(pollMessage.poll.id, lectureName, shuffledQ.correct, questions.length, shuffledQ.question, shuffledQ.options, shuffledQ.explanation);
         count++;
         
         for (let w = 0; w < 8; w++) {

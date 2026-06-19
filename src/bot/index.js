@@ -259,18 +259,23 @@ bot.on("message", async (ctx, next) => {
                 try {
                   const shuffledQ = shuffleQuestion(originalQuestion, lastCorrectIndex);
                   lastCorrectIndex = shuffledQ.correct;
+                  const pollOptions = { 
+                    type: "quiz", 
+                    correct_option_id: shuffledQ.correct, 
+                    is_anonymous: false
+                  };
+                  if (shuffledQ.explanation) {
+                    pollOptions.explanation = shuffledQ.explanation.slice(0, 200);
+                  }
+
                   const pollMessage = await ctx.telegram.sendPoll(
                     ctx.chat.id,
                     `Q${count + 1}) ${shuffledQ.question}`,
                     shuffledQ.options,
-                    { 
-                      type: "quiz", 
-                      correct_option_id: shuffledQ.correct, 
-                      is_anonymous: false
-                    }
+                    pollOptions
                   );
 
-                  savePoll(pollMessage.poll.id, childNode.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options);
+                  savePoll(pollMessage.poll.id, childNode.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options, shuffledQ.explanation);
                   count++;
                   await new Promise((r) => setTimeout(r, 3000));
                 } catch (pe) {
@@ -1436,18 +1441,23 @@ bot.action(/^start_quiz_node_(.+)/, async (ctx) => {
       try {
         const shuffledQ = shuffleQuestion(originalQuestion, lastCorrectIndex);
         lastCorrectIndex = shuffledQ.correct;
+        const pollOptions = { 
+          type: "quiz", 
+          correct_option_id: shuffledQ.correct, 
+          is_anonymous: false
+        };
+        if (shuffledQ.explanation) {
+          pollOptions.explanation = shuffledQ.explanation.slice(0, 200);
+        }
+
         const pollMessage = await ctx.telegram.sendPoll(
           ctx.chat.id,
           `Q${count + 1}) ${shuffledQ.question}`,
           shuffledQ.options,
-          { 
-            type: "quiz", 
-            correct_option_id: shuffledQ.correct, 
-            is_anonymous: false
-          }
+          pollOptions
         );
 
-        savePoll(pollMessage.poll.id, node.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options);
+        savePoll(pollMessage.poll.id, node.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options, shuffledQ.explanation);
         count++;
         await new Promise((r) => setTimeout(r, 3000));
       } catch (pe) {

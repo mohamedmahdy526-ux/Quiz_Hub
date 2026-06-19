@@ -30,6 +30,9 @@ function cleanText(text) {
     // توحيد صيغة correct : البديلة لتصبح Answer: وتتوافق مع الـ Parser
     .replace(/^correct\s*:/gim, 'Answer:')
 
+    // توحيد صيغة explanation : وتوضيح : لتصبح Explanation: وتتوافق مع الـ Parser
+    .replace(/^(explanation|توضيح)\s*:/gim, 'Explanation:')
+
     // إزالة المسافات الزائدة من أول وآخر الملف تماماً
     .trim();
 }
