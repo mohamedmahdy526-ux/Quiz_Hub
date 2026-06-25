@@ -125,6 +125,71 @@ function generateUnicodeCertificate(name, lecture, correct, total, rank) {
   return cert;
 }
 
+// 🧠 تشغيل الكويز وإرسال الأسئلة تتابعاً للمستخدم في الخاص
+async function runQuiz(ctx, node) {
+  try {
+    const { loadQuizzes } = require("../utils/storage");
+    const quizzes = loadQuizzes();
+    const quizData = quizzes[`node_${node.id}`];
+
+    if (!quizData || !quizData.questions || quizData.questions.length === 0) {
+      return ctx.reply('❌ عذراً، لا توجد أسئلة مسجلة في هذا الكويز حالياً!');
+    }
+
+    await ctx.reply(
+      `🧠 **بدء الكويز التفاعلي الشجري:**\n\n` +
+      `📖 العنوان: [ ${node.name} ]\n` +
+      `🎯 عدد الأسئلة: [ ${quizData.questions.length} سؤال ]\n\n` +
+      `سيتم إرسال الأسئلة إليك تتابقاً بالأسفل. بالتوفيق! 🩺✨`
+    );
+
+    let count = 0;
+    let lastCorrectIndex = -1;
+    for (let originalQuestion of quizData.questions) {
+      try {
+        const shuffledQ = shuffleQuestion(originalQuestion, lastCorrectIndex);
+        lastCorrectIndex = shuffledQ.correct;
+        const pollOptions = { 
+          type: "quiz", 
+          correct_option_id: shuffledQ.correct, 
+          is_anonymous: false
+        };
+        if (shuffledQ.explanation) {
+          pollOptions.explanation = truncateText(shuffledQ.explanation, 200);
+        }
+
+        const pollMessage = await ctx.telegram.sendPoll(
+          ctx.chat.id,
+          truncateText(`Q${count + 1}) ${shuffledQ.question}`, 300),
+          shuffledQ.options.map(opt => truncateText(opt, 100)),
+          pollOptions
+        );
+
+        savePoll(pollMessage.poll.id, node.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options, shuffledQ.explanation);
+        count++;
+        await new Promise((r) => setTimeout(r, 3000));
+      } catch (pe) {
+        console.error(pe);
+      }
+    }
+
+    return ctx.reply(
+      `🏁 **اكتمل إرسال أسئلة كويز:** [ ${node.name} ]\n\n` +
+      `اضغط على الزر بالأسفل لمعرفة تقييم نتيجتك وحساب نقاطك والحصول على الشهادة فوراً! 👇`,
+      {
+        ...Markup.inlineKeyboard([
+          [
+            Markup.button.url("📊 عرض تقرير النتيجة التفصيلي", `t.me/${ctx.botInfo.username}?start=result_${node.name.replace(/\s+/g, '_')}`),
+            Markup.button.callback("🔄 أعد حل الكويز", `retake_quiz_${node.id}`)
+          ]
+        ])
+      }
+    );
+  } catch (err) {
+    console.error("❌ runQuiz Error:", err.message);
+  }
+}
+
 // 🤖 حارس لقط رسائل نص الـ Intro + حفظ المجموعات تلقائياً
 bot.on("message", async (ctx, next) => {
   try {
@@ -255,60 +320,7 @@ bot.on("message", async (ctx, next) => {
             }
 
             if (childNode.type === 'quiz') {
-              const { loadQuizzes } = require("../utils/storage");
-              const quizzes = loadQuizzes();
-              const quizData = quizzes[`node_${childNode.id}`];
-
-              if (!quizData || !quizData.questions || quizData.questions.length === 0) {
-                return ctx.reply('❌ عذراً، لا توجد أسئلة مسجلة في هذا الكويز حالياً!');
-              }
-
-              await ctx.reply(
-                `🧠 **بدء الكويز التفاعلي الشجري:**\n\n` +
-                `📖 العنوان: [ ${childNode.name} ]\n` +
-                `🎯 عدد الأسئلة: [ ${quizData.questions.length} سؤال ]\n\n` +
-                `سيتم إرسال الأسئلة إليك تتابقاً بالأسفل. بالتوفيق! 🩺✨`
-              );
-
-              let count = 0;
-              let lastCorrectIndex = -1;
-              for (let originalQuestion of quizData.questions) {
-                try {
-                  const shuffledQ = shuffleQuestion(originalQuestion, lastCorrectIndex);
-                  lastCorrectIndex = shuffledQ.correct;
-                  const pollOptions = { 
-                    type: "quiz", 
-                    correct_option_id: shuffledQ.correct, 
-                    is_anonymous: false
-                  };
-                  if (shuffledQ.explanation) {
-                    pollOptions.explanation = truncateText(shuffledQ.explanation, 200);
-                  }
-
-                  const pollMessage = await ctx.telegram.sendPoll(
-                    ctx.chat.id,
-                    truncateText(`Q${count + 1}) ${shuffledQ.question}`, 300),
-                    shuffledQ.options.map(opt => truncateText(opt, 100)),
-                    pollOptions
-                  );
-
-                  savePoll(pollMessage.poll.id, childNode.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options, shuffledQ.explanation);
-                  count++;
-                  await new Promise((r) => setTimeout(r, 3000));
-                } catch (pe) {
-                  console.error(pe);
-                }
-              }
-
-              return ctx.reply(
-                `🏁 **اكتمل إرسال أسئلة كويز:** [ ${childNode.name} ]\n\n` +
-                `اضغط على الزر بالأسفل لمعرفة تقييم نتيجتك وحساب نقاطك والحصول على الشهادة فوراً! 👇`,
-                {
-                  ...Markup.inlineKeyboard([
-                    [Markup.button.url("📊 عرض تقرير النتيجة التفصيلي", `t.me/${ctx.botInfo.username}?start=result_${childNode.name.replace(/\s+/g, '_')}`)]
-                  ])
-                }
-              );
+              return runQuiz(ctx, childNode);
             }
           }
         }
@@ -404,10 +416,16 @@ bot.start(async (ctx) => {
       await ctx.reply(certificate, { parse_mode: "HTML" });
     }
 
-    // إرفاق زر الشرح الذكي بالذكاء الاصطناعي لو عنده أخطاء
+    // إرفاق الأزرار التفاعلية (الشرح بالذكاء الاصطناعي وإعادة حل الكويز)
     const buttons = [];
     if (wrong > 0) {
       buttons.push([Markup.button.callback("💡 اشرح لي الأخطاء بالذكاء الاصطناعي", `explain_${targetLecture.replace(/\s+/g, '_')}`)]);
+    }
+    
+    // ابحث عن النود المقابلة للمحاضرة لإضافة زر إعادة الحل
+    const quizNode = db.prepare("SELECT id FROM nodes WHERE name = ? AND type = 'quiz'").get(targetLecture);
+    if (quizNode) {
+      buttons.push([Markup.button.callback("🔄 أعد حل الكويز", `retake_quiz_${quizNode.id}`)]);
     }
     
     return ctx.reply(resultText, { 
@@ -1437,60 +1455,7 @@ bot.action(/^start_quiz_node_(.+)/, async (ctx) => {
       return ctx.reply('❌ عذراً، لم يتم العثور على هذا الكويز!');
     }
 
-    const { loadQuizzes } = require("../utils/storage");
-    const quizzes = loadQuizzes();
-    const quizData = quizzes[`node_${node.id}`];
-
-    if (!quizData || !quizData.questions || quizData.questions.length === 0) {
-      return ctx.reply('❌ عذراً، لا توجد أسئلة مسجلة في هذا الكويز حالياً!');
-    }
-
-    await ctx.reply(
-      `🧠 **بدء الكويز التفاعلي الشجري:**\n\n` +
-      `📖 العنوان: [ ${node.name} ]\n` +
-      `🎯 عدد الأسئلة: [ ${quizData.questions.length} سؤال ]\n\n` +
-      `سيتم إرسال الأسئلة إليك تتابقاً بالأسفل. بالتوفيق! 🩺✨`
-    );
-
-    let count = 0;
-    let lastCorrectIndex = -1;
-    for (let originalQuestion of quizData.questions) {
-      try {
-        const shuffledQ = shuffleQuestion(originalQuestion, lastCorrectIndex);
-        lastCorrectIndex = shuffledQ.correct;
-        const pollOptions = { 
-          type: "quiz", 
-          correct_option_id: shuffledQ.correct, 
-          is_anonymous: false
-        };
-        if (shuffledQ.explanation) {
-          pollOptions.explanation = truncateText(shuffledQ.explanation, 200);
-        }
-
-        const pollMessage = await ctx.telegram.sendPoll(
-          ctx.chat.id,
-          truncateText(`Q${count + 1}) ${shuffledQ.question}`, 300),
-          shuffledQ.options.map(opt => truncateText(opt, 100)),
-          pollOptions
-        );
-
-        savePoll(pollMessage.poll.id, node.name, shuffledQ.correct, quizData.questions.length, shuffledQ.question, shuffledQ.options, shuffledQ.explanation);
-        count++;
-        await new Promise((r) => setTimeout(r, 3000));
-      } catch (pe) {
-        console.error(pe);
-      }
-    }
-
-    return ctx.reply(
-      `🏁 **اكتمل إرسال أسئلة كويز:** [ ${node.name} ]\n\n` +
-      `اضغط على الزر بالأسفل لمعرفة تقييم نتيجتك وحساب نقاطك والحصول على الشهادة فوراً! 👇`,
-      {
-        ...Markup.inlineKeyboard([
-          [Markup.button.url("📊 عرض تقرير النتيجة التفصيلي", `t.me/${ctx.botInfo.username}?start=result_${node.name.replace(/\s+/g, '_')}`)]
-        ])
-      }
-    );
+    return runQuiz(ctx, node);
 
   } catch (err) {
     console.error('❌ Action Quiz Start Error:', err.message);
@@ -1536,6 +1501,45 @@ bot.action(/^perform_del_(.+)/, async (ctx) => {
 
 bot.action('cancel_del', async (ctx) => {
   return handleCancelDelete(ctx);
+});
+
+// 🔄 معالج طلب إعادة حل الكويز وتصفير درجات المحاضرة
+bot.action(/^retake_quiz_(.+)/, async (ctx) => {
+  try {
+    const nodeId = Number(ctx.match[1]);
+    const userId = String(ctx.from.id);
+
+    const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+    if (!node || node.type !== 'quiz') {
+      return ctx.answerCbQuery("❌ عذراً، لم يتم العثور على هذا الكويز!", { show_alert: true });
+    }
+
+    await ctx.answerCbQuery("🔄 جاري تصفير نتيجتك وبدء الكويز...");
+
+    // تصفير درجات الطالب لهذه المحاضرة في scores.json لمنع مضاعفة السكور
+    const lectureClean = node.name.replace(/_/g, " ").trim();
+    const userKey = `${userId}_${lectureClean}`;
+    let scores = loadData(scoresFile);
+    if (scores[userKey]) {
+      delete scores[userKey];
+      saveData(scoresFile, scores);
+      console.log(`🧹 Cleared score for user ${userId} on lecture: ${lectureClean} for retake.`);
+    }
+
+    // حذف الرسالة الحالية لتنظيف الشات
+    try {
+      await ctx.deleteMessage();
+    } catch (e) {
+      console.log("Could not delete message:", e.message);
+    }
+
+    // تشغيل الكويز
+    return runQuiz(ctx, node);
+
+  } catch (err) {
+    console.error("❌ Retake action error:", err.message);
+    return ctx.reply("❌ حدث خطأ أثناء محاولة إعادة الكويز.");
+  }
 });
 
 module.exports = bot;
