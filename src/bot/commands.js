@@ -12,6 +12,10 @@ const commands = [
     description: '📂 تصفح المجلدات والمحاضرات الأكاديمية'
   },
   {
+    command: 'stop',
+    description: '🛑 إيقاف الكويز الحالي أو النشر الجماعي'
+  },
+  {
     command: 'profile',
     description: '👤 عرض ملفي الأكاديمي وإحصائياتي'
   },

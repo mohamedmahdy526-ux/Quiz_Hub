@@ -136,17 +136,28 @@ async function runQuiz(ctx, node) {
       return ctx.reply('❌ عذراً، لا توجد أسئلة مسجلة في هذا الكويز حالياً!');
     }
 
+    global.activeQuizzes = global.activeQuizzes || {};
+    const userId = String(ctx.from.id);
+    global.activeQuizzes[userId] = { shouldStop: false };
+
     await ctx.reply(
       `🧠 **بدء الكويز التفاعلي الشجري:**\n\n` +
       `📖 العنوان: [ ${node.name} ]\n` +
       `🎯 عدد الأسئلة: [ ${quizData.questions.length} سؤال ]\n\n` +
-      `سيتم إرسال الأسئلة إليك تتابقاً بالأسفل. بالتوفيق! 🩺✨`
+      `سيتم إرسال الأسئلة إليك تتابقاً بالأسفل. بالتوفيق! 🩺✨\n` +
+      `💡 _(لإيقاف إرسال الأسئلة في أي وقت، اكتب للأمر /stop)_`
     );
 
     let count = 0;
     let lastCorrectIndex = -1;
     for (let originalQuestion of quizData.questions) {
       try {
+        // حارس فحص طلب إيقاف الكويز Mid-way
+        if (global.activeQuizzes[userId] && global.activeQuizzes[userId].shouldStop) {
+          console.log(`🧹 Quiz sending stopped by user request: ${userId}`);
+          break;
+        }
+
         const shuffledQ = shuffleQuestion(originalQuestion, lastCorrectIndex);
         lastCorrectIndex = shuffledQ.correct;
         const pollOptions = { 
@@ -171,6 +182,13 @@ async function runQuiz(ctx, node) {
       } catch (pe) {
         console.error(pe);
       }
+    }
+
+    const userStopped = global.activeQuizzes[userId] && global.activeQuizzes[userId].shouldStop;
+    delete global.activeQuizzes[userId];
+
+    if (userStopped) {
+      return; // توقف تام ولا ترسل شاشة التقييم
     }
 
     return ctx.reply(
@@ -456,6 +474,30 @@ bot.start(async (ctx) => {
       parse_mode: "Markdown",
       ...(buttons.length > 0 ? Markup.inlineKeyboard(buttons) : {})
     });
+  } else if (startPayload && startPayload.startsWith("startquiz_")) {
+    try {
+      const nodeId = Number(startPayload.replace("startquiz_", ""));
+      const node = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId);
+      if (!node) {
+        return ctx.reply('❌ عذراً، لم يتم العثور على هذا الكويز!');
+      }
+
+      // تصفير درجات الطالب لهذه المحاضرة في scores.json لمنع مضاعفة الدرجات
+      const userId = String(ctx.from.id);
+      const lectureClean = node.name.replace(/_/g, " ").trim();
+      const userKey = `${userId}_${lectureClean}`;
+      let scores = loadData(scoresFile);
+      if (scores[userKey]) {
+        delete scores[userKey];
+        saveData(scoresFile, scores);
+        console.log(`🧹 Cleared score for user ${userId} on lecture: ${lectureClean} for deep-linked retake.`);
+      }
+
+      return runQuiz(ctx, node);
+    } catch (err) {
+      console.error("❌ startquiz payload error:", err.message);
+      return ctx.reply("❌ حدث خطأ أثناء محاولة بدء الكويز.");
+    }
   }
   return ctx.reply(
     `🚀 *أهلاً بك في نظام الكويزات التمريضية الأكاديمي!* 🩺✨\n\n` +
@@ -601,6 +643,29 @@ bot.hears("📝 إنشاء ونشر كويز", async (ctx) => {
       disable_web_page_preview: true
     }
   );
+});
+
+bot.command("stop", async (ctx) => {
+  const userId = String(ctx.from?.id);
+  let stoppedSomething = false;
+
+  // 1. إيقاف الكويز الشخصي في الخاص
+  if (global.activeQuizzes && global.activeQuizzes[userId]) {
+    global.activeQuizzes[userId].shouldStop = true;
+    stoppedSomething = true;
+    await ctx.reply("🛑 تم إيقاف كويزك الخاص الحالي بطلب منك.");
+  }
+
+  // 2. إيقاف النشر الجماعي (للأدمن/الناشر)
+  if (global.activePublishing && global.activePublishing[userId]) {
+    global.activePublishing[userId].shouldStop = true;
+    stoppedSomething = true;
+    await ctx.reply("🛑 جاري إيقاف عملية النشر الجماعي...");
+  }
+
+  if (!stoppedSomething) {
+    return ctx.reply("ℹ️ لا توجد عمليات نشر أو كويزات نشطة حالياً لإيقافها.");
+  }
 });
 
 bot.command("browse", async (ctx) => {

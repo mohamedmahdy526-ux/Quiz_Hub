@@ -371,14 +371,22 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
     }
 
     // 🎯 زر النتيجة الشفاف النهائي للطلاب في الجروب
+    const lectureClean = String(lectureName).replace(/_/g, " ").trim();
+    const quizNode = db.prepare("SELECT id FROM nodes WHERE name = ? AND type = 'quiz'").get(lectureClean);
+    
+    const inlineButtons = [];
+    inlineButtons.push([Markup.button.url("📊 اعرف نتيجتك / Show My Result", `t.me/${ctx.botInfo.username}?start=result_${lectureName.replace(/\s+/g, '_')}`)]);
+    
+    if (quizNode) {
+      inlineButtons.push([Markup.button.url("🔄 أعد حل الكويز / Retake Quiz", `t.me/${ctx.botInfo.username}?start=startquiz_${quizNode.id}`)]);
+    }
+
     await ctx.telegram.sendMessage(
       target.id,
       `✅ انتهت أسئلة محاضرة: [ ${lectureName} ]\n\nاضغط على الزر بالأسفل لمعرفة نتيجتك التفصيلية فوراً في الخاص 📩👇`,
       {
         parse_mode: undefined,
-        ...Markup.inlineKeyboard([
-          [Markup.button.url("📊 اعرف نتيجتك / Show My Result", `t.me/${ctx.botInfo.username}?start=result_${lectureName.replace(/\s+/g, '_')}`)]
-        ])
+        ...Markup.inlineKeyboard(inlineButtons)
       }
     );
 
