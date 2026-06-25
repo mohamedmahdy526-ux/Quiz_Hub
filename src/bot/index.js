@@ -208,6 +208,29 @@ async function runQuiz(ctx, node) {
   }
 }
 
+bot.command("stop", async (ctx) => {
+  const userId = String(ctx.from?.id);
+  let stoppedSomething = false;
+
+  // 1. إيقاف الكويز الشخصي في الخاص
+  if (global.activeQuizzes && global.activeQuizzes[userId]) {
+    global.activeQuizzes[userId].shouldStop = true;
+    stoppedSomething = true;
+    await ctx.reply("🛑 تم إيقاف كويزك الخاص الحالي بطلب منك.");
+  }
+
+  // 2. إيقاف النشر الجماعي (للأدمن/الناشر)
+  if (global.activePublishing && global.activePublishing[userId]) {
+    global.activePublishing[userId].shouldStop = true;
+    stoppedSomething = true;
+    await ctx.reply("🛑 جاري إيقاف عملية النشر الجماعي...");
+  }
+
+  if (!stoppedSomething) {
+    return ctx.reply("ℹ️ لا توجد عمليات نشر أو كويزات نشطة حالياً لإيقافها.");
+  }
+});
+
 // 🤖 حارس لقط رسائل نص الـ Intro + حفظ المجموعات تلقائياً
 bot.on("message", async (ctx, next) => {
   try {
@@ -643,29 +666,6 @@ bot.hears("📝 إنشاء ونشر كويز", async (ctx) => {
       disable_web_page_preview: true
     }
   );
-});
-
-bot.command("stop", async (ctx) => {
-  const userId = String(ctx.from?.id);
-  let stoppedSomething = false;
-
-  // 1. إيقاف الكويز الشخصي في الخاص
-  if (global.activeQuizzes && global.activeQuizzes[userId]) {
-    global.activeQuizzes[userId].shouldStop = true;
-    stoppedSomething = true;
-    await ctx.reply("🛑 تم إيقاف كويزك الخاص الحالي بطلب منك.");
-  }
-
-  // 2. إيقاف النشر الجماعي (للأدمن/الناشر)
-  if (global.activePublishing && global.activePublishing[userId]) {
-    global.activePublishing[userId].shouldStop = true;
-    stoppedSomething = true;
-    await ctx.reply("🛑 جاري إيقاف عملية النشر الجماعي...");
-  }
-
-  if (!stoppedSomething) {
-    return ctx.reply("ℹ️ لا توجد عمليات نشر أو كويزات نشطة حالياً لإيقافها.");
-  }
 });
 
 bot.command("browse", async (ctx) => {
