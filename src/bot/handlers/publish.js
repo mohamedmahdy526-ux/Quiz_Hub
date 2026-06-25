@@ -177,6 +177,29 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
     
     delete global.waitingForSubject[userId];
 
+    // 🌳 تأكد من تسجيل الكويز كنود في قاعدة البيانات لتمكين إعادة الحل لاحقاً
+    const db = require("../../database/db");
+    const { loadQuizzes, saveQuizzes } = require("../../utils/storage");
+    
+    let node = db.prepare("SELECT * FROM nodes WHERE name = ? AND type = 'quiz'").get(lectureName);
+    if (!node) {
+      const insertResult = db.prepare(`
+        INSERT INTO nodes (name, type, parent_id)
+        VALUES (?, 'quiz', -999)
+      `).run(lectureName, -999);
+      
+      const newId = insertResult.lastInsertRowid;
+      node = { id: newId, name: lectureName };
+    }
+    
+    // حفظ الأسئلة تحت معرّف النود لربطه بنظام إعادة الحل الموحد
+    const quizzes = loadQuizzes();
+    quizzes[`node_${node.id}`] = {
+      lectureName: lectureName,
+      questions: questions
+    };
+    saveQuizzes(quizzes);
+
     // 🧹 تنظيف كافة الدرجات السابقة المسجلة للطلاب تحت اسم هذه المحاضرة/المادة لبدء كويز جديد ونظيف ومنع تراكم الأسئلة
     try {
       const scoresFile = path.join(__dirname, "../../../scores.json");

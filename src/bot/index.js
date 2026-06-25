@@ -423,7 +423,31 @@ bot.start(async (ctx) => {
     }
     
     // ابحث عن النود المقابلة للمحاضرة لإضافة زر إعادة الحل
-    const quizNode = db.prepare("SELECT id FROM nodes WHERE name = ? AND type = 'quiz'").get(targetLecture);
+    let quizNode = db.prepare("SELECT id FROM nodes WHERE name = ? AND type = 'quiz'").get(targetLecture);
+    if (!quizNode) {
+      // التحقق مما إذا كانت الأسئلة مخزنة مسبقاً تحت اسم المحاضرة في quizzes.json
+      const { loadQuizzes, saveQuizzes } = require("../utils/storage");
+      const quizzes = loadQuizzes();
+      const pastQuestions = quizzes[targetLecture];
+      if (pastQuestions && Array.isArray(pastQuestions) && pastQuestions.length > 0) {
+        // إنشاء نود مخفية في قاعدة البيانات وتخزينها تحت معرف النود
+        const insertResult = db.prepare(`
+          INSERT INTO nodes (name, type, parent_id)
+          VALUES (?, 'quiz', -999)
+        `).run(targetLecture, -999);
+        
+        const newId = insertResult.lastInsertRowid;
+        quizNode = { id: newId, name: targetLecture };
+        
+        quizzes[`node_${newId}`] = {
+          lectureName: targetLecture,
+          questions: pastQuestions
+        };
+        saveQuizzes(quizzes);
+        console.log(`📡 Auto-migrated past published quiz "${targetLecture}" to node_${newId}`);
+      }
+    }
+
     if (quizNode) {
       buttons.push([Markup.button.callback("🔄 أعد حل الكويز", `retake_quiz_${quizNode.id}`)]);
     }
