@@ -434,7 +434,7 @@ bot.start(async (ctx) => {
         const insertResult = db.prepare(`
           INSERT INTO nodes (name, type, parent_id)
           VALUES (?, 'quiz', -999)
-        `).run(targetLecture, -999);
+        `).run(targetLecture);
         
         const newId = insertResult.lastInsertRowid;
         quizNode = { id: newId, name: targetLecture };

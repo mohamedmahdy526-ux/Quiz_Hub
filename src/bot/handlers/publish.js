@@ -186,7 +186,7 @@ async function startMassPublishing(ctx, userId, inputtedSubjectName) {
       const insertResult = db.prepare(`
         INSERT INTO nodes (name, type, parent_id)
         VALUES (?, 'quiz', -999)
-      `).run(lectureName, -999);
+      `).run(lectureName);
       
       const newId = insertResult.lastInsertRowid;
       node = { id: newId, name: lectureName };
